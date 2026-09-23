@@ -22,7 +22,7 @@ Backtracking assigns a value, checks applicable constraints, continues when vali
 
 ## Optimisation
 
-Simple Hill Climbing begins with a feasible configuration, generates feasible neighbouring configurations, evaluates their energy/objective values, moves to a better neighbour, and stops when no better neighbour is available.
+Simple Hill Climbing begins with a feasible configuration, generates feasible neighbouring configurations, evaluates their energy/objective values, moves to a better neighbour, and stops when no better neighbour is available. The `optimisation/` module must use `energy/` for energy-consumption and energy-objective evaluation; it must not duplicate energy-consumption calculations or formulas.
 
 ## Energy objective
 

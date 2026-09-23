@@ -4,10 +4,12 @@
 
 The protected integration branch is `main`. Develop unfinished work on feature branches named `feature/<module-name>`, for example:
 
-- `feature/problem-model`
-- `feature/csp-engine`
-- `feature/hill-climbing`
+- `feature/problem`
+- `feature/csp`
+- `feature/optimisation`
+- `feature/energy`
 - `feature/visualisation`
+- `feature/interface`
 - `feature/integration`
 
 Before significant work, pull or rebase on the latest `main`. Make small, meaningful commits, push the feature branch to GitHub, and open a Pull Request for completed work. Review changes before merging. Do not merge code that breaks the architecture or tests, and do not develop unfinished work directly on `main`.

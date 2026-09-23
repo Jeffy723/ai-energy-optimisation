@@ -14,9 +14,9 @@ src/
 
 | Module | Responsibility |
 | --- | --- |
-| `problem/` | Represents buildings, rooms, devices, scenarios, domains, and constraints. It must not contain CSP-solving logic. |
-| `csp/` | Holds the CSP representation and solving process, including backtracking and CSP heuristics. Generates execution events for visualisation. |
-| `optimisation/` | Implements Simple Hill Climbing, generates neighbouring configurations, and evaluates candidates with the project objective function. |
+| `problem/` | Represents real-world scenario facts: buildings, rooms, devices, device rules, domain-specific rules, and scenario-level constraints. It must not contain CSP-solving logic or own the solver-ready CSP representation. |
+| `csp/` | Owns the solver-ready CSP representation and transforms/adapts the problem model into CSP variables, domains, and constraints. It contains the solving process, including backtracking and CSP heuristics, and generates execution events for visualisation. |
+| `optimisation/` | Implements Simple Hill Climbing and generates neighbouring configurations. It must use `energy/` for energy-consumption and energy-objective evaluation, and must not duplicate energy-consumption calculations or formulas. |
 | `energy/` | Calculates device and total energy use; compares initial and optimised configurations. |
 | `visualisation/` | Displays actual algorithm execution from AI-module events/data. It must not independently implement CSP or Hill Climbing. |
 | `interface/` | Provides lightweight input/output only. It must not contain AI algorithm logic. |

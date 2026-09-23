@@ -24,6 +24,18 @@ A CSP contract contains:
 
 Variables and values must identify their related problem-model entities clearly. Constraints must define the rule they evaluate and provide enough context to explain a pass or failure.
 
+## Objective definition
+
+An objective definition specifies the quantity to optimise, its direction (for example, minimise), the inputs it requires, and how an objective value is interpreted or compared. It must remain implementation-independent and use the energy-consumption contract where energy is the objective.
+
+## Constraint definition
+
+A constraint definition identifies the applicable variables or problem-model entities, the rule to be satisfied, and any required scenario context. It represents a solver-ready constraint after `csp/` adapts the relevant domain-specific rule or scenario-level constraint from `problem/`.
+
+## Constraint evaluation
+
+A constraint evaluation records the constraint being evaluated, the assignment or state evaluated, the result (`satisfied`, `violated`, or `undetermined` where assignment is incomplete), and an optional explanation. It must support genuine solver events without requiring a particular storage or database design.
+
 ## Solver event
 
 Each solver event contains an `eventType`, relevant `variable` and `value` where applicable, a state or assignment snapshot/reference, constraint/result information where applicable, and `searchDepth` and/or `step` where useful. CSP event types follow [ARCHITECTURE.md](ARCHITECTURE.md).
