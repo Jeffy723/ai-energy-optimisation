@@ -24,6 +24,8 @@ Backtracking assigns a value, checks applicable constraints, continues when vali
 
 Simple Hill Climbing begins with a feasible configuration, generates feasible neighbouring configurations, evaluates their energy/objective values, moves to a better neighbour, and stops when no better neighbour is available. The `optimisation/` module must use `energy/` for energy-consumption and energy-objective evaluation; it must not duplicate energy-consumption calculations or formulas.
 
+The CSP solver emits the CSP execution events defined in [ARCHITECTURE.md](ARCHITECTURE.md), and Hill Climbing emits its optimisation events there. Visualisation consumes those actual events and states; it does not generate a separate search process or fabricated results.
+
 ## Energy objective
 
 `Energy (kWh) = Power (kW) × Operating Time (hours)`
@@ -35,3 +37,5 @@ Simple Hill Climbing begins with a feasible configuration, generates feasible ne
 `Percentage Saved = (Energy Saved / Initial Energy) × 100`
 
 CSP is responsible for feasibility and constraint satisfaction. Hill Climbing is responsible for optimisation among feasible configurations. The exact objective function, variables, domains, and constraints must be defined consistently in [DATA_MODEL.md](DATA_MODEL.md) before implementation. No device power values or experimental results are assumed or fabricated here.
+
+Building type does not change the algorithms or create a separate application mode; it is generic scenario input.

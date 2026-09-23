@@ -25,8 +25,8 @@ Before starting, an AI coding agent must read, in order:
 5. `DEVELOPMENT_RULES.md`
 6. `CONTRIBUTING.md`
 
-Then it must understand its assigned module, modify only required files, follow existing interfaces, run relevant tests, and report what changed. It must not silently redesign unrelated parts.
+Then it must understand its assigned module, modify only required files, follow existing interfaces, run relevant tests, and report what changed. It must not silently redesign unrelated parts. Scenario examples are generic and size-based (`small`, `medium`, `large`); a building type is input data, not a separate application mode.
 
 ## Standard teammate prompt
 
-> Read all files under `docs/` before making changes. Treat them as the source of truth. Work only on the assigned module. Do not change the architecture, data contracts, dependencies, or responsibilities of other modules unless explicitly instructed.
+> Read all files under `docs/` before making changes. Treat them as the source of truth. Work only on the assigned module. Do not change the architecture, data contracts, dependencies, or responsibilities of other modules unless explicitly instructed. Treat building types as generic scenario input, and ensure any visualisation uses actual algorithm events and data.

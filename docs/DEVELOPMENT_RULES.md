@@ -17,5 +17,8 @@
 15. Do not delete working code without understanding its dependencies.
 16. Discuss architectural changes with the team before making them.
 17. AI coding agents must follow these rules as well.
+18. Treat building type as generic scenario input, not as a separate application mode or architectural branch.
+19. Organise demonstration scenarios by problem size (`small`, `medium`, `large`) rather than by building category.
+20. Search-tree, backtracking, and hill-climbing visualisations must represent actual emitted execution events and states.
 
 When documentation and implementation conflict, stop and resolve the conflict with the team before expanding the implementation.

@@ -1,0 +1,7 @@
+{
+  "name": "ai-energy-optimisation",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI-based building energy optimisation using CSP and Hill Climbing",
+  "type": "module"
+}

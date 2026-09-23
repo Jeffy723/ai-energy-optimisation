@@ -4,7 +4,7 @@
 
 This project develops an AI-based system for building energy management. It models a scenario as a Constraint Satisfaction Problem (CSP), finds feasible device configurations using CSP techniques, and applies Simple Hill Climbing to search for a lower-energy feasible configuration.
 
-This is primarily an AI and algorithm implementation project. A lightweight interface may provide inputs and demonstrate algorithm behaviour, but it is not the main product.
+This is primarily an AI and algorithm implementation project. A lightweight UI may provide generic scenario input, start the algorithms, and display their genuine execution and results, but it is not the main product.
 
 ## Techniques
 
@@ -39,4 +39,6 @@ It does not claim to directly achieve these Sustainable Development Goals.
 
 In scope are the problem model, CSP formulation and solver, search heuristics, feasible-configuration generation, Simple Hill Climbing, energy calculations, algorithm events, and lightweight presentation of genuine results.
 
-Out of scope are a generic website or dashboard, CRUD-first application features, IoT hardware/control, database implementation, fabricated demonstrations, and production building automation. Interface work must support the AI implementation rather than replace it.
+Building, room, and device information is structured input to the algorithms. Scenarios are generic: a building type is input data, not an application mode. Demonstration scenarios are organised by problem size (`small`, `medium`, and `large`), not by building category.
+
+Out of scope are a building-management website, dashboard-first application features, virtual or 3D building simulation, CRUD-first application features, IoT hardware/control, database implementation, fabricated demonstrations, and production building automation. Interface work must support the AI implementation rather than replace it.
