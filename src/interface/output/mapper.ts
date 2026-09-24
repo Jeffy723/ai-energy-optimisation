@@ -1,4 +1,5 @@
 import type { FinalResult } from "../../optimisation/hillClimbing/contracts.js";
+import type { CspExecutionEvent, HillClimbingExecutionEvent } from "../../visualisation/events/contracts.js";
 import type { Scenario } from "../../problem/scenario/contracts.js";
 import type { BacktrackingView } from "../../visualisation/backtracking/contracts.js";
 import type { HillClimbingView } from "../../visualisation/hillClimbing/contracts.js";
@@ -9,6 +10,11 @@ export interface VisualisationModels {
   readonly searchTree?: SearchTree;
   readonly backtracking?: BacktrackingView;
   readonly hillClimbing?: HillClimbingView;
+}
+
+export interface ExecutionEvents {
+  readonly csp: readonly CspExecutionEvent[];
+  readonly hillClimbing: readonly HillClimbingExecutionEvent[];
 }
 
 function copyRecord<T extends Record<string, unknown>>(record: T): T {
@@ -39,6 +45,7 @@ function summarizeScenario(scenario: Scenario): ScenarioSummary {
 export function presentFinalResult(
   result: FinalResult,
   visualisation: VisualisationModels = {},
+  events?: ExecutionEvents,
 ): InterfaceOutput {
   return {
     scenario: summarizeScenario(result.scenario),
@@ -80,5 +87,13 @@ export function presentFinalResult(
         ? {}
         : { hillClimbing: visualisation.hillClimbing }),
     },
+    ...(events === undefined
+      ? {}
+      : {
+          events: {
+            csp: [...events.csp],
+            hillClimbing: [...events.hillClimbing],
+          },
+        }),
   };
 }
