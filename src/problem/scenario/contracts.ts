@@ -62,8 +62,27 @@ export interface ScenarioConstraint {
   readonly id: Identifier;
   readonly description: string;
   readonly evaluationInputs?: readonly string[];
+  /**
+   * Structured semantics consumed by the CSP adapter. A description alone is
+   * explanatory text and is never treated as executable constraint logic.
+   */
+  readonly semantics?: ScenarioConstraintSemantics;
   readonly properties?: ScenarioProperties;
 }
+
+export type ScenarioConstraintSemantics =
+  | {
+      readonly kind: "forbid-states-when-room-occupancy";
+      readonly deviceIds: readonly Identifier[];
+      readonly occupancy: number;
+      readonly stateIds: readonly Identifier[];
+    }
+  | {
+      readonly kind: "require-state-when-room-occupancy";
+      readonly deviceIds: readonly Identifier[];
+      readonly occupancy: number;
+      readonly stateId: Identifier;
+    };
 
 export interface ObjectiveConfiguration {
   readonly objectiveId: Identifier;

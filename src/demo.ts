@@ -1,51 +1,10 @@
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import type { CspConstraint, CspConfiguration } from "./csp/model/contracts.js";
-import type { SolvableCspProblem } from "./csp/model/evaluation.js";
+import { createSolvableCspProblem } from "./csp/model/scenarioAdapter.js";
 import { runPipeline } from "./interface/pipeline/index.js";
 import { formatConsoleOutput } from "./interface/output/index.js";
 import { loadScenario } from "./interface/input/index.js";
 import type { Objective } from "./energy/objective/contracts.js";
-import type { Scenario } from "./problem/scenario/contracts.js";
-
-function buildDemoProblem(scenario: Scenario): SolvableCspProblem {
-  const variableIds: string[] = [];
-  const domains = new Map<string, readonly string[]>();
-
-  for (const room of scenario.building.rooms) {
-    for (const device of room.devices) {
-      variableIds.push(device.id);
-      // Put the highest declared state first so the real hill climber has a
-      // visible improvement path without fabricating a configuration.
-      domains.set(
-        device.id,
-        [...device.availableStates].reverse().map((state) => state.id),
-      );
-    }
-  }
-
-  const constraints: SolvableCspProblem["constraints"] =
-    scenario.constraints.map((scenarioConstraint) => {
-      const constraint: CspConstraint = {
-        id: scenarioConstraint.id,
-        involvedVariables: [...variableIds],
-        description: scenarioConstraint.description,
-        evaluationSemantics: "Demo fixture accepts all domain assignments",
-        evaluationInputs: scenarioConstraint.evaluationInputs ?? [],
-        evaluationResult: { status: "satisfied" },
-      };
-      return {
-        constraint,
-        evaluate: (assignment: CspConfiguration) => ({
-          constraintId: constraint.id,
-          status: "satisfied" as const,
-          assignment,
-        }),
-      };
-    });
-
-  return { variableIds, domains, constraints };
-}
 
 const objective: Objective = {
   id: "minimise-energy",
@@ -68,7 +27,19 @@ export async function runDemo(): Promise<void> {
   );
   const scenarioJson = await readFile(scenarioPath, "utf8");
   const { scenario } = loadScenario(JSON.parse(scenarioJson) as unknown);
-  const result = runPipeline(scenario, buildDemoProblem(scenario), objective);
+  const adaptedProblem = createSolvableCspProblem(scenario);
+  const problem = {
+    ...adaptedProblem,
+    // Keep the example's declared states deterministic while starting the
+    // search from the higher-energy end of each domain.
+    domains: new Map(
+      [...adaptedProblem.domains].map(([id, states]) => [
+        id,
+        [...states].reverse(),
+      ]),
+    ),
+  };
+  const result = runPipeline(scenario, problem, objective);
 
   console.log("========================================");
   console.log("AI ENERGY OPTIMISATION DEMONSTRATION");

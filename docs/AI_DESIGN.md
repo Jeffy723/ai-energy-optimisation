@@ -36,6 +36,6 @@ The CSP solver emits the CSP execution events defined in [ARCHITECTURE.md](ARCHI
 
 `Percentage Saved = (Energy Saved / Initial Energy) × 100`
 
-CSP is responsible for feasibility and constraint satisfaction. Hill Climbing is responsible for optimisation among feasible configurations. The exact objective function, variables, domains, and constraints must be defined consistently in [DATA_MODEL.md](DATA_MODEL.md) before implementation. No device power values or experimental results are assumed or fabricated here.
+CSP is responsible for feasibility and constraint satisfaction. Structured scenario-rule semantics are adapted into solver evaluators before search; human-readable descriptions are not executable. Hill Climbing is responsible for optimisation among feasible configurations. The exact objective function, variables, domains, and constraints must be defined consistently in [DATA_MODEL.md](DATA_MODEL.md) before implementation. No device power values or experimental results are assumed or fabricated here.
 
 Building type does not change the algorithms or create a separate application mode; it is generic scenario input.

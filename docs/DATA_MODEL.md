@@ -28,6 +28,14 @@ The AI engine operates on a generic scenario regardless of building type. A buil
 | Room | <code>id</code>, <code>name</code>, numeric <code>occupancy</code> (number of occupants), <code>devices</code> |
 | Device | <code>id</code>, <code>type</code>, <code>ratedPower</code>, <code>operatingTime</code>, <code>availableStates</code>, and properties relevant to constraints |
 
+Scenario constraints may include structured machine-readable semantics in
+addition to their descriptions. Descriptions remain explanatory text and are
+never evaluated as code. The CSP model adapter converts supported semantics
+into solver-ready evaluators. For example, a generic occupancy/state rule can
+identify target device IDs, an occupancy value, and either forbidden state IDs
+or a required state ID. Constraints with unsupported or missing semantics must
+be rejected by the adapter rather than treated as automatically satisfied.
+
 <code>ratedPower</code> is expressed consistently in kW when used for energy calculation, and <code>operatingTime</code> in hours. Demonstration scenarios may be classified as <code>small</code>, <code>medium</code>, or <code>large</code> by problem size without changing this contract.
 
 <code>availableStates</code> represents the possible operating states of a device and may become the domain of its corresponding CSP variable. For example only, a device may have <code>[state A, state B, state C]</code>; these labels are illustrative and are not fixed states.
