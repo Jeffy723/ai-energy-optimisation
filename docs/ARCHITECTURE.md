@@ -31,7 +31,7 @@ src/
 | `problem/` | Stores real-world scenario facts and rules. It does not implement the CSP solver or own the solver-ready CSP representation. |
 | `problem/scenario/` | Represents generic building, room, device, occupancy, environmental, and user-requirement input. Building type is input data, not an application mode. |
 | `problem/constraints/` | Represents domain-specific rules and scenario-level constraints before CSP adaptation. |
-| `csp/model/` | Converts or represents `problem/` data as the solver-ready CSP and owns variables, domains, assignments, and solver-ready constraints. |
+| `csp/model/` | Converts or represents `problem/` data as the solver-ready CSP and owns variables, domains, assignments, and solver-ready constraints. The scenario adapter converts structured rule semantics into evaluators; descriptions are never executable. |
 | `csp/solver/` | Implements CSP solving with backtracking and emits CSP execution events. |
 | `csp/heuristics/` | Implements MRV, Degree Heuristic, LCV, Forward Checking, and Constraint Propagation as appropriate. |
 | `optimisation/hillClimbing/` | Implements Simple Hill Climbing and generates feasible neighbours. It uses `energy/` for evaluation and must not duplicate energy calculations. |

@@ -134,6 +134,12 @@
       "evaluationInputs": ["occupancy", "effectivePower"],
       "properties": {
         "ruleKind": "occupancy-based"
+      },
+      "semantics": {
+        "kind": "forbid-states-when-room-occupancy",
+        "deviceIds": ["device-hvac-01", "device-hvac-02"],
+        "occupancy": 0,
+        "stateIds": ["full", "standard"]
       }
     },
     {
@@ -142,6 +148,12 @@
       "evaluationInputs": ["occupancy"],
       "properties": {
         "ruleKind": "occupancy-based"
+      },
+      "semantics": {
+        "kind": "require-state-when-room-occupancy",
+        "deviceIds": ["device-projector-01"],
+        "occupancy": 0,
+        "stateId": "off"
       }
     },
     {
@@ -150,6 +162,12 @@
       "evaluationInputs": ["occupancy", "effectivePower"],
       "properties": {
         "ruleKind": "occupancy-based"
+      },
+      "semantics": {
+        "kind": "require-state-when-room-occupancy",
+        "deviceIds": ["device-lighting-01"],
+        "occupancy": 0,
+        "stateId": "off"
       }
     }
   ],
