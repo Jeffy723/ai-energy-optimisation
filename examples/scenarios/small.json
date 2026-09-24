@@ -1,1 +1,162 @@
-{}
+{
+  "id": "scenario-office-small-01",
+  "name": "Small Office Building — Morning Peak",
+  "building": {
+    "id": "building-01",
+    "name": "Riverside Office Block",
+    "type": "office",
+    "rooms": [
+      {
+        "id": "room-main-office",
+        "name": "Main Office",
+        "occupancy": 8,
+        "devices": [
+          {
+            "id": "device-hvac-01",
+            "type": "hvac",
+            "ratedPower": 3.5,
+            "operatingTime": 8,
+            "availableStates": [
+              {
+                "id": "off",
+                "label": "Off",
+                "effectivePower": 0
+              },
+              {
+                "id": "economy",
+                "label": "Economy",
+                "effectivePower": 1.2
+              },
+              {
+                "id": "standard",
+                "label": "Standard",
+                "effectivePower": 2.4
+              },
+              {
+                "id": "full",
+                "label": "Full",
+                "effectivePower": 3.5
+              }
+            ],
+            "properties": {
+              "zone": "main-office"
+            }
+          },
+          {
+            "id": "device-lighting-01",
+            "type": "lighting",
+            "ratedPower": 0.5,
+            "operatingTime": 8,
+            "availableStates": [
+              {
+                "id": "off",
+                "label": "Off",
+                "effectivePower": 0
+              },
+              {
+                "id": "dim",
+                "label": "Dim (40%)",
+                "effectivePower": 0.2
+              },
+              {
+                "id": "on",
+                "label": "On (100%)",
+                "effectivePower": 0.5
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "room-meeting-room",
+        "name": "Meeting Room",
+        "occupancy": 0,
+        "devices": [
+          {
+            "id": "device-hvac-02",
+            "type": "hvac",
+            "ratedPower": 2.0,
+            "operatingTime": 2,
+            "availableStates": [
+              {
+                "id": "off",
+                "label": "Off",
+                "effectivePower": 0
+              },
+              {
+                "id": "economy",
+                "label": "Economy",
+                "effectivePower": 0.8
+              },
+              {
+                "id": "standard",
+                "label": "Standard",
+                "effectivePower": 1.5
+              }
+            ]
+          },
+          {
+            "id": "device-projector-01",
+            "type": "projector",
+            "ratedPower": 0.35,
+            "operatingTime": 2,
+            "availableStates": [
+              {
+                "id": "off",
+                "label": "Off",
+                "effectivePower": 0
+              },
+              {
+                "id": "standby",
+                "label": "Standby",
+                "effectivePower": 0.01
+              },
+              {
+                "id": "on",
+                "label": "On",
+                "effectivePower": 0.35
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "context": {
+    "ambientTemperatureCelsius": 28,
+    "timeOfDay": "morning-peak",
+    "dayType": "weekday"
+  },
+  "constraints": [
+    {
+      "id": "c-occupancy-hvac",
+      "description": "HVAC must not run at full power in a room with zero occupants.",
+      "evaluationInputs": ["occupancy", "effectivePower"],
+      "properties": {
+        "ruleKind": "occupancy-based"
+      }
+    },
+    {
+      "id": "c-unoccupied-projector-off",
+      "description": "The projector must be off when the meeting room has zero occupants.",
+      "evaluationInputs": ["occupancy"],
+      "properties": {
+        "ruleKind": "occupancy-based"
+      }
+    },
+    {
+      "id": "c-lighting-occupancy",
+      "description": "Lighting must be off in any room with zero occupants.",
+      "evaluationInputs": ["occupancy", "effectivePower"],
+      "properties": {
+        "ruleKind": "occupancy-based"
+      }
+    }
+  ],
+  "objectiveConfiguration": {
+    "objectiveId": "minimise-energy",
+    "properties": {
+      "description": "Minimise total building energy consumption (kWh) while satisfying all constraints."
+    }
+  }
+}
