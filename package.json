@@ -3,5 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "description": "AI-based building energy optimisation using CSP and Hill Climbing",
-  "type": "module"
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.1"
+  }
 }
