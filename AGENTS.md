@@ -8,9 +8,16 @@ Before coding, read:
 4. <code>docs/DATA_MODEL.md</code>
 5. <code>docs/DEVELOPMENT_RULES.md</code>
 6. <code>docs/CONTRIBUTING.md</code>
-7. The applicable specification under <code>docs/team/</code>.
 
-Treat the documentation, architecture, and existing TypeScript contracts as authoritative. Reuse contracts; do not create duplicate models. Do not independently redesign the architecture, create an alternative plan, or change another module's ownership unnecessarily.
+## Development workflow
+
+- <code>main</code> is currently the primary development branch. Work directly on <code>main</code> unless explicitly instructed otherwise.
+- Do not create branches unless explicitly requested. A branch may be created for a specific independent task when instructed.
+- Module ownership means architectural responsibility, not Git branch ownership. Do not modify unrelated modules without explicit instruction.
+- Preserve the documented architecture and existing TypeScript contracts. Reuse contracts; do not create duplicate models or invent an alternative architecture.
+- Make focused commits after meaningful completed stages when committing is within the task instructions. Keep Git history clean and understandable.
+
+Treat the documentation, architecture, and existing TypeScript contracts as authoritative. Do not independently redesign the architecture or create an alternative plan.
 
 Do not introduce ML, fuzzy logic, databases, backend/frontend frameworks, or unapproved technologies. Do not hard-code classroom, office, residential, or another building type. The system must remain generic.
 
