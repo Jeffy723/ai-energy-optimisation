@@ -1,1 +1,60 @@
-{}
+{
+  "id": "scenario-medium-01",
+  "name": "Medium Generic Scenario",
+  "building": {
+    "id": "building-medium-01",
+    "name": "Medium Generic Building",
+    "type": "generic",
+    "rooms": [
+      {
+        "id": "room-medium-01",
+        "name": "Primary Room",
+        "occupancy": 4,
+        "devices": [
+          {
+            "id": "device-medium-01",
+            "type": "generic-device",
+            "ratedPower": 3,
+            "operatingTime": 6,
+            "availableStates": [
+              { "id": "low", "effectivePower": 1 },
+              { "id": "high", "effectivePower": 3 }
+            ]
+          },
+          {
+            "id": "device-medium-02",
+            "type": "generic-device",
+            "ratedPower": 1,
+            "operatingTime": 4,
+            "availableStates": [
+              { "id": "off", "effectivePower": 0 },
+              { "id": "on", "effectivePower": 1 }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "room-medium-02",
+        "name": "Secondary Room",
+        "occupancy": 1,
+        "devices": [
+          {
+            "id": "device-medium-03",
+            "type": "generic-device",
+            "ratedPower": 2,
+            "operatingTime": 3,
+            "availableStates": [
+              { "id": "low", "effectivePower": 0.5 },
+              { "id": "high", "effectivePower": 2 }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "context": { "period": "representative" },
+  "constraints": [
+    { "id": "constraint-medium-01", "description": "Generic feasibility rule" }
+  ],
+  "objectiveConfiguration": { "objectiveId": "minimise-energy" }
+}
