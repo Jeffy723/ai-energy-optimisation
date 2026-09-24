@@ -6,9 +6,12 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc",
-    "test": "vitest run"
+    "test": "vitest run",
+    "demo": "tsx src/demo.ts"
   },
   "devDependencies": {
+    "@types/node": "^26.6.2",
+    "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vitest": "^5.0.1"
   }
