@@ -6,6 +6,16 @@ import type { PipelineResult } from "../pipeline/contracts.js";
 import type { SearchTreeNode } from "../../visualisation/searchTree/contracts.js";
 import type { ConstraintDraft, DeviceDraft, RoomDraft, StateDraft } from "./contracts.js";
 import { buildScenario } from "./scenarioBuilder.js";
+import {
+  addConstraint,
+  addDevice,
+  addRoom,
+  addState,
+  removeConstraint,
+  removeDevice,
+  removeRoom,
+  removeState,
+} from "./builderState.js";
 
 const appElement = document.querySelector<HTMLDivElement>("#app");
 if (appElement === null) throw new Error("Web application root is missing");
@@ -32,13 +42,13 @@ function input(label: string, value: string, data: string, type = "text", prefix
   return `<label>${escapeHtml(label)}<input data-${prefix}field="${data}" type="${type}" value="${escapeHtml(value)}"></label>`;
 }
 function renderState(item: StateDraft, room: number, device: number, index: number): string {
-  return `<div class="grid state" data-state="${room},${device},${index}">${input("State ID", item.id, "id", "text", "state-")}${input("Effective power (kW)", item.effectivePower, "effectivePower", "number", "state-")}<button class="danger" data-action="remove-state" data-room="${room}" data-device="${device}" data-state="${index}">Remove state</button></div>`;
+  return `<div class="grid state" data-role="state" data-room-index="${room}" data-device-index="${device}" data-state-index="${index}">${input("State ID", item.id, "id", "text", "state-")}${input("Effective power (kW)", item.effectivePower, "effectivePower", "number", "state-")}<button class="danger" data-action="remove-state" data-room-index="${room}" data-device-index="${device}" data-state-index="${index}">Remove state</button></div>`;
 }
 function renderDevice(item: DeviceDraft, room: number, index: number): string {
-  return `<article class="card device" data-device="${room},${index}"><div class="grid">${input("Device ID", item.id, "id", "text", "device-")}${input("Device type/name", item.type, "type", "text", "device-")}${input("Rated power (kW)", item.ratedPower, "ratedPower", "number", "device-")}${input("Operating time (hours)", item.operatingTime, "operatingTime", "number", "device-")}</div><div>${item.states.map((s, i) => renderState(s, room, index, i)).join("")}</div><button class="secondary" data-action="add-state" data-room="${room}" data-device="${index}">+ Add state</button><button class="danger" data-action="remove-device" data-room="${room}" data-device="${index}">Remove device</button></article>`;
+  return `<article class="card device" data-role="device" data-room-index="${room}" data-device-index="${index}"><div class="grid">${input("Device ID", item.id, "id", "text", "device-")}${input("Device type/name", item.type, "type", "text", "device-")}${input("Rated power (kW)", item.ratedPower, "ratedPower", "number", "device-")}${input("Operating time (hours)", item.operatingTime, "operatingTime", "number", "device-")}</div><div>${item.states.map((s, i) => renderState(s, room, index, i)).join("")}</div><button class="secondary" data-action="add-state" data-room-index="${room}" data-device-index="${index}">+ Add state</button><button class="danger" data-action="remove-device" data-room-index="${room}" data-device-index="${index}">Remove device</button></article>`;
 }
 function renderRoom(item: RoomDraft, index: number): string {
-  return `<article class="card room" data-room="${index}"><div class="grid">${input("Room ID", item.id, "id", "text", "room-")}${input("Room name", item.name, "name", "text", "room-")}${input("Occupancy", item.occupancy, "occupancy", "number", "room-")}</div><div>${item.devices.map((d, i) => renderDevice(d, index, i)).join("")}</div><button class="secondary" data-action="add-device" data-room="${index}">+ Add device</button><button class="danger" data-action="remove-room" data-room="${index}">Remove room</button></article>`;
+  return `<article class="card room" data-role="room" data-room-index="${index}"><div class="grid">${input("Room ID", item.id, "id", "text", "room-")}${input("Room name", item.name, "name", "text", "room-")}${input("Occupancy", item.occupancy, "occupancy", "number", "room-")}</div><div>${item.devices.map((d, i) => renderDevice(d, index, i)).join("")}</div><button class="secondary" data-action="add-device" data-room-index="${index}">+ Add device</button><button class="danger" data-action="remove-room" data-room-index="${index}">Remove room</button></article>`;
 }
 function renderConstraint(item: ConstraintDraft, index: number): string {
   const devices = state.rooms.flatMap((room) => room.devices);
@@ -47,21 +57,24 @@ function renderConstraint(item: ConstraintDraft, index: number): string {
   const selectedStates = new Set(item.stateIds);
   const selectedDeviceOptions = devices.map((device) => `<option value="${escapeHtml(device.id)}" ${selectedDevices.has(device.id) ? "selected" : ""}>${escapeHtml(device.id)}</option>`).join("");
   const selectedStateOptions = stateIds.map((id) => `<option value="${escapeHtml(id)}" ${selectedStates.has(id) ? "selected" : ""}>${escapeHtml(id)}</option>`).join("");
-  return `<article class="card constraint" data-constraint="${index}"><div class="grid">${input("Constraint ID", item.id, "id")}${input("Description", item.description, "description")}<label>Kind<select data-field="kind"><option value="forbid-states-when-room-occupancy" ${item.kind === "forbid-states-when-room-occupancy" ? "selected" : ""}>Forbid states at occupancy</option><option value="require-state-when-room-occupancy" ${item.kind === "require-state-when-room-occupancy" ? "selected" : ""}>Require state at occupancy</option></select></label>${input("Occupancy", item.occupancy, "occupancy", "number")}<label>Target devices<select multiple data-field="deviceIds">${selectedDeviceOptions}</select></label>${item.kind === "forbid-states-when-room-occupancy" ? `<label>Forbidden states<select multiple data-field="stateIds">${selectedStateOptions}</select></label>` : `<label>Required state<select data-field="stateId"><option value="">Select state</option>${stateIds.map((id) => `<option value="${escapeHtml(id)}" ${id === item.stateId ? "selected" : ""}>${escapeHtml(id)}</option>`).join("")}</select></label>`}</div><button class="danger" data-action="remove-constraint" data-constraint="${index}">Remove constraint</button></article>`;
+  return `<article class="card constraint" data-role="constraint" data-constraint-index="${index}"><div class="grid">${input("Constraint ID", item.id, "id")}${input("Description", item.description, "description")}<label>Kind<select data-field="kind"><option value="forbid-states-when-room-occupancy" ${item.kind === "forbid-states-when-room-occupancy" ? "selected" : ""}>Forbid states at occupancy</option><option value="require-state-when-room-occupancy" ${item.kind === "require-state-when-room-occupancy" ? "selected" : ""}>Require state at occupancy</option></select></label>${input("Occupancy", item.occupancy, "occupancy", "number")}<label>Target devices<select multiple data-field="deviceIds">${selectedDeviceOptions}</select></label>${item.kind === "forbid-states-when-room-occupancy" ? `<label>Forbidden states<select multiple data-field="stateIds">${selectedStateOptions}</select></label>` : `<label>Required state<select data-field="stateId"><option value="">Select state</option>${stateIds.map((id) => `<option value="${escapeHtml(id)}" ${id === item.stateId ? "selected" : ""}>${escapeHtml(id)}</option>`).join("")}</select></label>`}</div><button class="danger" data-action="remove-constraint" data-constraint-index="${index}">Remove constraint</button></article>`;
 }
 function render(): void {
   app.innerHTML = `<main><header><p class="eyebrow">ACADEMIC AI PROJECT</p><h1>AI Energy Optimisation</h1><p>Model a generic scenario, solve feasibility with CSP, then inspect Simple Hill Climbing and its real execution events.</p></header><div id="message" aria-live="polite"></div><section><div class="section-heading"><div><p class="eyebrow">01 / INPUT</p><h2>Scenario</h2></div><p class="muted">All values remain scenario data; building type does not select an algorithm.</p></div><div class="grid">${input("Scenario name", state.scenarioName, "scenario-name")}${input("Building type", state.buildingType, "building-type")}${input("Temperature", state.temperature, "temperature", "number")}${input("Time of day", state.timeOfDay, "time-of-day")}</div></section><section><div class="section-heading"><div><p class="eyebrow">02 / MODEL</p><h2>Rooms and devices</h2></div><span class="count">${state.rooms.length} room${state.rooms.length === 1 ? "" : "s"}</span></div><div id="rooms">${state.rooms.map(renderRoom).join("")}</div><button class="secondary" data-action="add-room">+ Add room</button></section><section><div class="section-heading"><div><p class="eyebrow">03 / RULES</p><h2>Constraints</h2></div></div><p class="muted">Define structured rules; the existing CSP adapter performs evaluation.</p><div id="constraints">${state.constraints.map(renderConstraint).join("")}</div><button class="secondary" data-action="add-constraint">+ Add constraint</button></section><section class="run-panel"><button class="primary run-button" data-action="run">Run Optimisation <span aria-hidden="true">→</span></button><p class="muted">Runs validation, CSP, energy evaluation, Simple Hill Climbing, and visualisation.</p></section><div id="results"></div></main>`;
   app.querySelectorAll<HTMLElement>("[data-action]").forEach((button) => button.addEventListener("click", () => {
     readForm();
     const action = button.dataset.action;
-    if (action === "add-room") state.rooms.push(makeRoom());
-    if (action === "remove-room") state.rooms.splice(Number(button.dataset.room), 1);
-    if (action === "add-device") state.rooms[Number(button.dataset.room)].devices.push(makeDevice());
-    if (action === "remove-device") state.rooms[Number(button.dataset.room)].devices.splice(Number(button.dataset.device), 1);
-    if (action === "add-state") state.rooms[Number(button.dataset.room)].devices[Number(button.dataset.device)].states.push(makeState());
-    if (action === "remove-state") state.rooms[Number(button.dataset.room)].devices[Number(button.dataset.device)].states.splice(Number(button.dataset.state), 1);
-    if (action === "add-constraint") state.constraints.push(makeConstraint());
-    if (action === "remove-constraint") state.constraints.splice(Number(button.dataset.constraint), 1);
+    const roomIndex = Number(button.dataset.roomIndex);
+    const deviceIndex = Number(button.dataset.deviceIndex);
+    const stateIndex = Number(button.dataset.stateIndex);
+    if (action === "add-room") addRoom(state, makeRoom());
+    if (action === "remove-room") removeRoom(state, roomIndex);
+    if (action === "add-device") addDevice(state, roomIndex, makeDevice());
+    if (action === "remove-device") removeDevice(state, roomIndex, deviceIndex);
+    if (action === "add-state") addState(state, roomIndex, deviceIndex, makeState());
+    if (action === "remove-state") removeState(state, roomIndex, deviceIndex, stateIndex);
+    if (action === "add-constraint") addConstraint(state, makeConstraint());
+    if (action === "remove-constraint") removeConstraint(state, Number(button.dataset.constraintIndex));
     if (action === "run") execute();
     else render();
   }));
@@ -71,22 +84,23 @@ function readForm(): void {
   state.buildingType = (app.querySelector('[data-field="building-type"]') as HTMLInputElement)?.value ?? state.buildingType;
   state.temperature = (app.querySelector('[data-field="temperature"]') as HTMLInputElement)?.value ?? state.temperature;
   state.timeOfDay = (app.querySelector('[data-field="time-of-day"]') as HTMLInputElement)?.value ?? state.timeOfDay;
-  app.querySelectorAll<HTMLElement>("[data-room]").forEach((element) => {
-    const roomIndex = Number(element.dataset.room);
+  app.querySelectorAll<HTMLElement>('[data-role="room"]').forEach((element) => {
+    const roomIndex = Number(element.dataset.roomIndex);
     const room = state.rooms[roomIndex];
     element.querySelectorAll<HTMLInputElement>("[data-room-field]").forEach((field) => {
       const key = field.dataset.roomField as "id" | "name" | "occupancy";
       room[key] = field.value;
     });
-    element.querySelectorAll<HTMLElement>("[data-device]").forEach((deviceElement) => {
-      const [roomIndexText, deviceIndexText] = deviceElement.dataset.device!.split(",");
+    element.querySelectorAll<HTMLElement>('[data-role="device"]').forEach((deviceElement) => {
+      const roomIndexText = deviceElement.dataset.roomIndex!;
+      const deviceIndexText = deviceElement.dataset.deviceIndex!;
       const device = state.rooms[Number(roomIndexText)].devices[Number(deviceIndexText)];
       deviceElement.querySelectorAll<HTMLInputElement>("[data-device-field]").forEach((field) => {
         const key = field.dataset.deviceField as keyof Omit<DeviceDraft, "states">;
         device[key] = field.value;
       });
-      deviceElement.querySelectorAll<HTMLElement>("[data-state]").forEach((stateElement) => {
-        const [, , stateIndexText] = stateElement.dataset.state!.split(",");
+      deviceElement.querySelectorAll<HTMLElement>('[data-role="state"]').forEach((stateElement) => {
+        const stateIndexText = stateElement.dataset.stateIndex!;
         const item = device.states[Number(stateIndexText)];
         stateElement.querySelectorAll<HTMLInputElement>("[data-state-field]").forEach((field) => {
           item[field.dataset.stateField as "id" | "effectivePower"] = field.value;
@@ -94,8 +108,8 @@ function readForm(): void {
       });
     });
   });
-  app.querySelectorAll<HTMLElement>("[data-constraint]").forEach((element) => {
-    const item = state.constraints[Number(element.dataset.constraint)];
+  app.querySelectorAll<HTMLElement>('[data-role="constraint"]').forEach((element) => {
+    const item = state.constraints[Number(element.dataset.constraintIndex)];
     element.querySelectorAll<HTMLInputElement | HTMLSelectElement>("[data-field]").forEach((field) => {
       const key = field.dataset.field as keyof ConstraintDraft;
       if (field instanceof HTMLSelectElement && field.multiple) item[key] = [...field.selectedOptions].map((option) => option.value) as never;
