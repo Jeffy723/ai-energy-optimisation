@@ -89,7 +89,16 @@ export function calculateEnergy(
     for (const device of room.devices) {
       const state = stateForDevice(device.id, device, configuration[device.id]);
       const powerKw = state.effectivePower ?? device.ratedPower;
+      if (!Number.isFinite(powerKw) || powerKw < 0) {
+        invalid(`Effective power for device "${device.id}" must be a finite non-negative number of kW`);
+      }
+      if (!Number.isFinite(device.operatingTime) || device.operatingTime < 0) {
+        invalid(`Operating time for device "${device.id}" must be a finite non-negative number of hours`);
+      }
       const energyKwh = powerKw * device.operatingTime;
+      if (!Number.isFinite(energyKwh)) {
+        invalid(`Energy for device "${device.id}" is not a finite kWh value`);
+      }
       const measurement: DeviceEnergyMeasurement = {
         roomId: room.id,
         deviceId: device.id,

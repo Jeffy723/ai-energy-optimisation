@@ -3,9 +3,13 @@ import { createSolvableCspProblem } from "../../csp/model/scenarioAdapter.js";
 import { loadScenario } from "../input/index.js";
 import { runPipeline } from "../pipeline/index.js";
 import type { PipelineResult } from "../pipeline/contracts.js";
-import type { SearchTreeNode } from "../../visualisation/searchTree/contracts.js";
-import type { ConstraintDraft, DeviceDraft, RoomDraft, StateDraft } from "./contracts.js";
-import { buildScenario } from "./scenarioBuilder.js";
+import type {
+  ConstraintDraft,
+  DeviceDraft,
+  RoomDraft,
+  ScenarioFormState,
+  StateDraft,
+} from "./contracts.js";
 import {
   addConstraint,
   addDevice,
@@ -16,125 +20,466 @@ import {
   removeRoom,
   removeState,
 } from "./builderState.js";
+import { buildScenario } from "./scenarioBuilder.js";
+import {
+  describeCspEvent,
+  describeHillClimbingEvent,
+  energyBreakdown,
+  formatEnergy,
+  formatPercent,
+  nameMapsFromScenario,
+  totalsMatchPipeline,
+  type NameMaps,
+} from "./presentation.js";
+import { renderTreeSVG } from "./svgTree.js";
+import type { Scenario } from "../../problem/scenario/contracts.js";
 
 const appElement = document.querySelector<HTMLDivElement>("#app");
 if (appElement === null) throw new Error("Web application root is missing");
 const app: HTMLDivElement = appElement;
 
-let nextId = 1;
-const state = {
-  scenarioName: "Browser scenario",
-  buildingType: "generic",
+let nextId = 100;
+let treeZoom = 1;
+let treeFit = false;
+let lastHtml = "";
+
+const state: ScenarioFormState = {
+  scenarioName: "",
+  buildingType: "",
   temperature: "",
   timeOfDay: "",
-  rooms: [{ id: "room-1", name: "Room", occupancy: "0", devices: [{ id: "device-1", type: "device", ratedPower: "1", operatingTime: "1", states: [{ id: "off", effectivePower: "0" }, { id: "on", effectivePower: "1" }] }] }] as RoomDraft[],
-  constraints: [] as ConstraintDraft[],
+  lightIntensity: "",
+  rooms: [],
+  constraints: [],
 };
-const makeState = (): StateDraft => ({ id: `state-${nextId++}`, effectivePower: "0" });
-const makeDevice = (): DeviceDraft => ({ id: `device-${nextId++}`, type: "device", ratedPower: "1", operatingTime: "1", states: [makeState()] });
-const makeRoom = (): RoomDraft => ({ id: `room-${nextId++}`, name: "Room", occupancy: "0", devices: [makeDevice()] });
-const makeConstraint = (): ConstraintDraft => ({ id: `constraint-${nextId++}`, description: "Constraint", kind: "forbid-states-when-room-occupancy", deviceIds: [], occupancy: "0", stateIds: [], stateId: "" });
+
+const makeState = (): StateDraft => ({
+  id: `state-${nextId++}`,
+  name: "",
+  effectivePower: "",
+});
+const makeDevice = (): DeviceDraft => ({
+  id: `device-${nextId++}`,
+  type: "",
+  ratedPower: "",
+  operatingTime: "",
+  states: [makeState()],
+});
+const makeRoom = (): RoomDraft => ({
+  id: `room-${nextId++}`,
+  name: "",
+  occupancy: "",
+  devices: [makeDevice()],
+});
+const makeConstraint = (): ConstraintDraft => ({
+  id: `constraint-${nextId++}`,
+  description: "",
+  kind: "forbid-states-when-room-occupancy",
+  deviceIds: [],
+  occupancy: "0",
+  stateIds: [],
+  stateId: "",
+});
 
 function escapeHtml(value: unknown): string {
-  return String(value).replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" })[character] ?? character);
+  return String(value).replace(/[&<>"']/g, (character) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" })[character] ?? character,
+  );
 }
-function input(label: string, value: string, data: string, type = "text", prefix = ""): string {
-  return `<label>${escapeHtml(label)}<input data-${prefix}field="${data}" type="${type}" value="${escapeHtml(value)}"></label>`;
+
+function field(
+  label: string,
+  value: string,
+  name: string,
+  type = "text",
+  extra = "",
+): string {
+  return `<label>${escapeHtml(label)}<input data-field="${escapeHtml(name)}" type="${type}" value="${escapeHtml(value)}" ${extra}></label>`;
 }
-function renderState(item: StateDraft, room: number, device: number, index: number): string {
-  return `<div class="grid state" data-role="state" data-room-index="${room}" data-device-index="${device}" data-state-index="${index}">${input("State ID", item.id, "id", "text", "state-")}${input("Effective power (kW)", item.effectivePower, "effectivePower", "number", "state-")}<button class="danger" data-action="remove-state" data-room-index="${room}" data-device-index="${device}" data-state-index="${index}">Remove state</button></div>`;
+
+function renderState(item: StateDraft, roomId: string, deviceId: string): string {
+  return `<div class="state-row" data-role="state" data-room-id="${escapeHtml(roomId)}" data-device-id="${escapeHtml(deviceId)}" data-state-id="${escapeHtml(item.id)}">
+    ${field("State name", item.name, "name")}
+    ${field("Effective power (kW)", item.effectivePower, "effectivePower", "number", 'min="0" step="0.01"')}
+    <button type="button" class="danger" data-action="remove-state" data-room-id="${escapeHtml(roomId)}" data-device-id="${escapeHtml(deviceId)}" data-state-id="${escapeHtml(item.id)}">Remove</button>
+  </div>`;
 }
-function renderDevice(item: DeviceDraft, room: number, index: number): string {
-  return `<article class="card device" data-role="device" data-room-index="${room}" data-device-index="${index}"><div class="grid">${input("Device ID", item.id, "id", "text", "device-")}${input("Device type/name", item.type, "type", "text", "device-")}${input("Rated power (kW)", item.ratedPower, "ratedPower", "number", "device-")}${input("Operating time (hours)", item.operatingTime, "operatingTime", "number", "device-")}</div><div>${item.states.map((s, i) => renderState(s, room, index, i)).join("")}</div><button class="secondary" data-action="add-state" data-room-index="${room}" data-device-index="${index}">+ Add state</button><button class="danger" data-action="remove-device" data-room-index="${room}" data-device-index="${index}">Remove device</button></article>`;
+
+function renderDevice(item: DeviceDraft, roomId: string): string {
+  return `<article class="device" data-role="device" data-room-id="${escapeHtml(roomId)}" data-device-id="${escapeHtml(item.id)}">
+    <div class="grid">
+      ${field("Device name", item.type, "type")}
+      ${field("Rated power (kW)", item.ratedPower, "ratedPower", "number", 'min="0" step="0.01"')}
+      ${field("Operating time (hours)", item.operatingTime, "operatingTime", "number", 'min="0" step="0.01"')}
+    </div>
+    ${item.states.map((operatingState) => renderState(operatingState, roomId, item.id)).join("")}
+    <div class="row-actions">
+      <button type="button" class="secondary" data-action="add-state" data-room-id="${escapeHtml(roomId)}" data-device-id="${escapeHtml(item.id)}">Add state</button>
+      <button type="button" class="danger" data-action="remove-device" data-room-id="${escapeHtml(roomId)}" data-device-id="${escapeHtml(item.id)}">Remove device</button>
+    </div>
+  </article>`;
 }
-function renderRoom(item: RoomDraft, index: number): string {
-  return `<article class="card room" data-role="room" data-room-index="${index}"><div class="grid">${input("Room ID", item.id, "id", "text", "room-")}${input("Room name", item.name, "name", "text", "room-")}${input("Occupancy", item.occupancy, "occupancy", "number", "room-")}</div><div>${item.devices.map((d, i) => renderDevice(d, index, i)).join("")}</div><button class="secondary" data-action="add-device" data-room-index="${index}">+ Add device</button><button class="danger" data-action="remove-room" data-room-index="${index}">Remove room</button></article>`;
+
+function renderRoom(item: RoomDraft): string {
+  return `<article class="room" data-role="room" data-room-id="${escapeHtml(item.id)}">
+    <div class="grid">
+      ${field("Room name", item.name, "name")}
+      ${field("Occupancy (people)", item.occupancy, "occupancy", "number", 'min="0" step="1"')}
+    </div>
+    ${item.devices.map((device) => renderDevice(device, item.id)).join("")}
+    <div class="row-actions">
+      <button type="button" class="secondary" data-action="add-device" data-room-id="${escapeHtml(item.id)}">Add device</button>
+      <button type="button" class="danger" data-action="remove-room" data-room-id="${escapeHtml(item.id)}">Remove room</button>
+    </div>
+  </article>`;
 }
-function renderConstraint(item: ConstraintDraft, index: number): string {
-  const devices = state.rooms.flatMap((room) => room.devices);
-  const stateIds = [...new Set(devices.flatMap((device) => device.states.map((item) => item.id)))];
-  const selectedDevices = new Set(item.deviceIds);
-  const selectedStates = new Set(item.stateIds);
-  const selectedDeviceOptions = devices.map((device) => `<option value="${escapeHtml(device.id)}" ${selectedDevices.has(device.id) ? "selected" : ""}>${escapeHtml(device.id)}</option>`).join("");
-  const selectedStateOptions = stateIds.map((id) => `<option value="${escapeHtml(id)}" ${selectedStates.has(id) ? "selected" : ""}>${escapeHtml(id)}</option>`).join("");
-  return `<article class="card constraint" data-role="constraint" data-constraint-index="${index}"><div class="grid">${input("Constraint ID", item.id, "id")}${input("Description", item.description, "description")}<label>Kind<select data-field="kind"><option value="forbid-states-when-room-occupancy" ${item.kind === "forbid-states-when-room-occupancy" ? "selected" : ""}>Forbid states at occupancy</option><option value="require-state-when-room-occupancy" ${item.kind === "require-state-when-room-occupancy" ? "selected" : ""}>Require state at occupancy</option></select></label>${input("Occupancy", item.occupancy, "occupancy", "number")}<label>Target devices<select multiple data-field="deviceIds">${selectedDeviceOptions}</select></label>${item.kind === "forbid-states-when-room-occupancy" ? `<label>Forbidden states<select multiple data-field="stateIds">${selectedStateOptions}</select></label>` : `<label>Required state<select data-field="stateId"><option value="">Select state</option>${stateIds.map((id) => `<option value="${escapeHtml(id)}" ${id === item.stateId ? "selected" : ""}>${escapeHtml(id)}</option>`).join("")}</select></label>`}</div><button class="danger" data-action="remove-constraint" data-constraint-index="${index}">Remove constraint</button></article>`;
+
+function deviceOptions(selected: readonly string[]): string {
+  return state.rooms.flatMap((room) =>
+    room.devices.map((device) => {
+      const chosen = selected.includes(device.id) ? "selected" : "";
+      return `<option value="${escapeHtml(device.id)}" ${chosen}>${escapeHtml(room.name)} — ${escapeHtml(device.type)}</option>`;
+    }),
+  ).join("");
 }
+
+function stateOptions(
+  selected: readonly string[],
+  current: string | undefined,
+  deviceIds: readonly string[],
+): string {
+  const seen = new Map<string, string>();
+  for (const room of state.rooms) {
+    for (const device of room.devices) {
+      if (!deviceIds.includes(device.id)) continue;
+      for (const operatingState of device.states) {
+        seen.set(operatingState.id, operatingState.name || operatingState.id);
+      }
+    }
+  }
+  return [...seen.entries()].map(([id, name]) => {
+    const chosen = selected.includes(id) || current === id ? "selected" : "";
+    return `<option value="${escapeHtml(id)}" ${chosen}>${escapeHtml(name)}</option>`;
+  }).join("");
+}
+
+function renderConstraint(item: ConstraintDraft): string {
+  const forbid = item.kind === "forbid-states-when-room-occupancy";
+  return `<article class="constraint" data-role="constraint" data-constraint-id="${escapeHtml(item.id)}">
+    <div class="grid">
+      <label>Rule
+        <select data-field="kind">
+          <option value="forbid-states-when-room-occupancy" ${forbid ? "selected" : ""}>Forbid selected states when occupancy equals</option>
+          <option value="require-state-when-room-occupancy" ${forbid ? "" : "selected"}>Require a state when occupancy equals</option>
+        </select>
+      </label>
+      ${field("Occupancy value", item.occupancy, "occupancy", "number", 'min="0" step="1"')}
+      <label>Devices
+        <select multiple data-field="deviceIds">${deviceOptions(item.deviceIds)}</select>
+      </label>
+      ${forbid
+        ? `<label>Forbidden states<select multiple data-field="stateIds">${stateOptions(item.stateIds, undefined, item.deviceIds)}</select></label>`
+        : `<label>Required state<select data-field="stateId"><option value="">Select a state</option>${stateOptions([], item.stateId, item.deviceIds)}</select></label>`}
+    </div>
+    <label>Explanation (optional)
+      <input data-field="description" type="text" value="${escapeHtml(item.description)}" placeholder="Shown in the search explanation">
+    </label>
+    <div class="row-actions">
+      <button type="button" class="danger" data-action="remove-constraint" data-constraint-id="${escapeHtml(item.id)}">Remove constraint</button>
+    </div>
+  </article>`;
+}
+
+function restoreFocus(focusPath: string, start: number | null, end: number | null): void {
+  if (!focusPath) return;
+  const elToFocus = app.querySelector(focusPath) as HTMLInputElement | null;
+  if (elToFocus === null) return;
+  elToFocus.focus();
+  if (start !== null && typeof elToFocus.setSelectionRange === "function") {
+    try {
+      elToFocus.setSelectionRange(start, end);
+    } catch {
+      /* ignore non-text inputs */
+    }
+  }
+}
+
+function currentFocus(): { path: string; start: number | null; end: number | null } {
+  const activeEl = document.activeElement as HTMLInputElement | null;
+  if (activeEl === null || !app.contains(activeEl) || activeEl.dataset.field === undefined) {
+    return { path: "", start: null, end: null };
+  }
+  const fieldName = activeEl.dataset.field;
+  const stateEl = activeEl.closest('[data-role="state"]') as HTMLElement | null;
+  const deviceEl = activeEl.closest('[data-role="device"]') as HTMLElement | null;
+  const roomEl = activeEl.closest('[data-role="room"]') as HTMLElement | null;
+  const constraintEl = activeEl.closest('[data-role="constraint"]') as HTMLElement | null;
+  let path = `[data-field="${fieldName}"]`;
+  if (stateEl) {
+    path = `[data-role="state"][data-state-id="${stateEl.dataset.stateId}"] [data-field="${fieldName}"]`;
+  } else if (deviceEl) {
+    path = `[data-role="device"][data-device-id="${deviceEl.dataset.deviceId}"] [data-field="${fieldName}"]`;
+  } else if (roomEl) {
+    path = `[data-role="room"][data-room-id="${roomEl.dataset.roomId}"] [data-field="${fieldName}"]`;
+  } else if (constraintEl) {
+    path = `[data-role="constraint"][data-constraint-id="${constraintEl.dataset.constraintId}"] [data-field="${fieldName}"]`;
+  }
+  let start: number | null = null;
+  let end: number | null = null;
+  try {
+    start = activeEl.selectionStart;
+    end = activeEl.selectionEnd;
+  } catch {
+    start = null;
+    end = null;
+  }
+  return { path, start, end };
+}
+
 function render(): void {
-  app.innerHTML = `<main><header><p class="eyebrow">ACADEMIC AI PROJECT</p><h1>AI Energy Optimisation</h1><p>Model a generic scenario, solve feasibility with CSP, then inspect Simple Hill Climbing and its real execution events.</p></header><div id="message" aria-live="polite"></div><section><div class="section-heading"><div><p class="eyebrow">01 / INPUT</p><h2>Scenario</h2></div><p class="muted">All values remain scenario data; building type does not select an algorithm.</p></div><div class="grid">${input("Scenario name", state.scenarioName, "scenario-name")}${input("Building type", state.buildingType, "building-type")}${input("Temperature", state.temperature, "temperature", "number")}${input("Time of day", state.timeOfDay, "time-of-day")}</div></section><section><div class="section-heading"><div><p class="eyebrow">02 / MODEL</p><h2>Rooms and devices</h2></div><span class="count">${state.rooms.length} room${state.rooms.length === 1 ? "" : "s"}</span></div><div id="rooms">${state.rooms.map(renderRoom).join("")}</div><button class="secondary" data-action="add-room">+ Add room</button></section><section><div class="section-heading"><div><p class="eyebrow">03 / RULES</p><h2>Constraints</h2></div></div><p class="muted">Define structured rules; the existing CSP adapter performs evaluation.</p><div id="constraints">${state.constraints.map(renderConstraint).join("")}</div><button class="secondary" data-action="add-constraint">+ Add constraint</button></section><section class="run-panel"><button class="primary run-button" data-action="run">Run Optimisation <span aria-hidden="true">→</span></button><p class="muted">Runs validation, CSP, energy evaluation, Simple Hill Climbing, and visualisation.</p></section><div id="results"></div></main>`;
-  app.querySelectorAll<HTMLElement>("[data-action]").forEach((button) => button.addEventListener("click", () => {
-    readForm();
-    const action = button.dataset.action;
-    const roomIndex = Number(button.dataset.roomIndex);
-    const deviceIndex = Number(button.dataset.deviceIndex);
-    const stateIndex = Number(button.dataset.stateIndex);
-    if (action === "add-room") addRoom(state, makeRoom());
-    if (action === "remove-room") removeRoom(state, roomIndex);
-    if (action === "add-device") addDevice(state, roomIndex, makeDevice());
-    if (action === "remove-device") removeDevice(state, roomIndex, deviceIndex);
-    if (action === "add-state") addState(state, roomIndex, deviceIndex, makeState());
-    if (action === "remove-state") removeState(state, roomIndex, deviceIndex, stateIndex);
-    if (action === "add-constraint") addConstraint(state, makeConstraint());
-    if (action === "remove-constraint") removeConstraint(state, Number(button.dataset.constraintIndex));
-    if (action === "run") execute();
-    else render();
-  }));
+  const focus = currentFocus();
+  app.innerHTML = `<div class="ui-shell">
+    <header class="hero">
+      <p class="kicker">Academic AI demonstration</p>
+      <h1>AI-Based Smart Energy Optimisation</h1>
+      <p>Enter a generic building scenario. Constraint satisfaction finds a feasible device configuration. Simple Hill Climbing then searches neighbouring feasible configurations for lower energy.</p>
+      <div class="pipeline">
+        <span>Scenario</span>
+        <span>CSP search</span>
+        <span>Feasible plan</span>
+        <span>Hill climbing</span>
+        <span>Energy result</span>
+      </div>
+    </header>
+    <div id="message" aria-live="polite"></div>
+    <section class="block">
+      <h2>Environment</h2>
+      <p class="lede">These values are stored as scenario context. Occupancy constraints use room occupancy. Energy itself is calculated only from selected state power and operating hours.</p>
+      <div class="grid">
+        ${field("Temperature (°C)", state.temperature, "temperature", "number", 'step="0.1"')}
+        ${field("Time of day", state.timeOfDay, "time-of-day")}
+        ${field("Light intensity", state.lightIntensity, "light-intensity", "number", 'min="0" step="1"')}
+      </div>
+    </section>
+    <section class="block">
+      <h2>Rooms and devices</h2>
+      <p class="lede">Power is entered in kilowatts (kW). Operating time is entered in hours. Energy for a device is effective power × hours.</p>
+      <div id="rooms">${state.rooms.length === 0
+        ? '<p class="empty-builder">No rooms yet. Add a room and enter its details.</p>'
+        : state.rooms.map(renderRoom).join("")}</div>
+      <div class="row-actions"><button type="button" class="secondary" data-action="add-room">Add room</button></div>
+    </section>
+    <section class="block">
+      <h2>Constraints</h2>
+      <p class="lede">Each rule is evaluated by the CSP solver. Occupancy is an exact match: the rule applies when a device’s room occupancy equals the value below.</p>
+      <div id="constraints">${state.constraints.length === 0
+        ? '<p class="empty-builder">No constraints yet. Add at least one structured rule before running.</p>'
+        : state.constraints.map(renderConstraint).join("")}</div>
+      <div class="row-actions"><button type="button" class="secondary" data-action="add-constraint">Add constraint</button></div>
+    </section>
+    <section class="block run-bar">
+      <p>Runs the existing CSP solver, energy calculator, and Simple Hill Climbing on this scenario.</p>
+      <button type="button" class="primary" data-action="run">Run AI Optimisation</button>
+    </section>
+    <div id="results">${lastHtml}</div>
+  </div>`;
+  applyTreeZoom();
+  restoreFocus(focus.path, focus.start, focus.end);
 }
+
+function readScopedFields(
+  root: ParentNode,
+  selector: string,
+): Record<string, string | string[]> {
+  const values: Record<string, string | string[]> = {};
+  root.querySelectorAll<HTMLInputElement | HTMLSelectElement>(selector).forEach((fieldEl) => {
+    const key = fieldEl.dataset.field;
+    if (key === undefined) return;
+    if (fieldEl instanceof HTMLSelectElement && fieldEl.multiple) {
+      values[key] = [...fieldEl.selectedOptions].map((option) => option.value);
+    } else {
+      values[key] = fieldEl.value;
+    }
+  });
+  return values;
+}
+
 function readForm(): void {
-  state.scenarioName = (app.querySelector('[data-field="scenario-name"]') as HTMLInputElement)?.value ?? state.scenarioName;
-  state.buildingType = (app.querySelector('[data-field="building-type"]') as HTMLInputElement)?.value ?? state.buildingType;
-  state.temperature = (app.querySelector('[data-field="temperature"]') as HTMLInputElement)?.value ?? state.temperature;
-  state.timeOfDay = (app.querySelector('[data-field="time-of-day"]') as HTMLInputElement)?.value ?? state.timeOfDay;
-  app.querySelectorAll<HTMLElement>('[data-role="room"]').forEach((element) => {
-    const roomIndex = Number(element.dataset.roomIndex);
-    const room = state.rooms[roomIndex];
-    element.querySelectorAll<HTMLInputElement>("[data-room-field]").forEach((field) => {
-      const key = field.dataset.roomField as "id" | "name" | "occupancy";
-      room[key] = field.value;
-    });
-    element.querySelectorAll<HTMLElement>('[data-role="device"]').forEach((deviceElement) => {
-      const roomIndexText = deviceElement.dataset.roomIndex!;
-      const deviceIndexText = deviceElement.dataset.deviceIndex!;
-      const device = state.rooms[Number(roomIndexText)].devices[Number(deviceIndexText)];
-      deviceElement.querySelectorAll<HTMLInputElement>("[data-device-field]").forEach((field) => {
-        const key = field.dataset.deviceField as keyof Omit<DeviceDraft, "states">;
-        device[key] = field.value;
-      });
-      deviceElement.querySelectorAll<HTMLElement>('[data-role="state"]').forEach((stateElement) => {
-        const stateIndexText = stateElement.dataset.stateIndex!;
-        const item = device.states[Number(stateIndexText)];
-        stateElement.querySelectorAll<HTMLInputElement>("[data-state-field]").forEach((field) => {
-          item[field.dataset.stateField as "id" | "effectivePower"] = field.value;
-        });
-      });
-    });
+  const top = readScopedFields(app, ".ui-shell > .block:first-of-type [data-field], .hero + #message + .block [data-field]");
+  const temperature = app.querySelector<HTMLInputElement>('[data-field="temperature"]');
+  const timeOfDay = app.querySelector<HTMLInputElement>('[data-field="time-of-day"]');
+  const lightIntensity = app.querySelector<HTMLInputElement>('[data-field="light-intensity"]');
+  if (temperature) state.temperature = temperature.value;
+  if (timeOfDay) state.timeOfDay = timeOfDay.value;
+  if (lightIntensity) state.lightIntensity = lightIntensity.value;
+  void top;
+
+  app.querySelectorAll<HTMLElement>('[data-role="room"]').forEach((roomEl) => {
+    const room = state.rooms.find((item) => item.id === roomEl.dataset.roomId);
+    if (room === undefined) return;
+    const values = readScopedFields(roomEl, ':scope > .grid [data-field]');
+    if (typeof values.name === "string") room.name = values.name;
+    if (typeof values.occupancy === "string") room.occupancy = values.occupancy;
   });
-  app.querySelectorAll<HTMLElement>('[data-role="constraint"]').forEach((element) => {
-    const item = state.constraints[Number(element.dataset.constraintIndex)];
-    element.querySelectorAll<HTMLInputElement | HTMLSelectElement>("[data-field]").forEach((field) => {
-      const key = field.dataset.field as keyof ConstraintDraft;
-      if (field instanceof HTMLSelectElement && field.multiple) item[key] = [...field.selectedOptions].map((option) => option.value) as never;
-      else item[key] = field.value as never;
-    });
+
+  app.querySelectorAll<HTMLElement>('[data-role="device"]').forEach((deviceEl) => {
+    const room = state.rooms.find((item) => item.id === deviceEl.dataset.roomId);
+    const device = room?.devices.find((item) => item.id === deviceEl.dataset.deviceId);
+    if (device === undefined) return;
+    const values = readScopedFields(deviceEl, ':scope > .grid [data-field]');
+    if (typeof values.type === "string") device.type = values.type;
+    if (typeof values.ratedPower === "string") device.ratedPower = values.ratedPower;
+    if (typeof values.operatingTime === "string") device.operatingTime = values.operatingTime;
+  });
+
+  app.querySelectorAll<HTMLElement>('[data-role="state"]').forEach((stateEl) => {
+    const room = state.rooms.find((item) => item.id === stateEl.dataset.roomId);
+    const device = room?.devices.find((item) => item.id === stateEl.dataset.deviceId);
+    const operatingState = device?.states.find((item) => item.id === stateEl.dataset.stateId);
+    if (operatingState === undefined) return;
+    const values = readScopedFields(stateEl, "[data-field]");
+    if (typeof values.name === "string") operatingState.name = values.name;
+    if (typeof values.effectivePower === "string") operatingState.effectivePower = values.effectivePower;
+  });
+
+  app.querySelectorAll<HTMLElement>('[data-role="constraint"]').forEach((constraintEl) => {
+    const constraint = state.constraints.find((item) => item.id === constraintEl.dataset.constraintId);
+    if (constraint === undefined) return;
+    const values = readScopedFields(constraintEl, "[data-field]");
+    if (typeof values.kind === "string") constraint.kind = values.kind as ConstraintDraft["kind"];
+    if (typeof values.occupancy === "string") constraint.occupancy = values.occupancy;
+    if (Array.isArray(values.deviceIds)) constraint.deviceIds = values.deviceIds;
+    if (Array.isArray(values.stateIds)) constraint.stateIds = values.stateIds;
+    if (typeof values.stateId === "string") constraint.stateId = values.stateId;
+    if (typeof values.description === "string") constraint.description = values.description;
+
+    const validStateIds = new Set(
+      state.rooms
+        .flatMap((room) => room.devices)
+        .filter((device) => constraint.deviceIds.includes(device.id))
+        .flatMap((device) => device.states.map((operatingState) => operatingState.id)),
+    );
+    constraint.stateIds = constraint.stateIds.filter((stateId) => validStateIds.has(stateId));
+    if (constraint.stateId !== "" && !validStateIds.has(constraint.stateId)) {
+      constraint.stateId = "";
+    }
   });
 }
-function json(value: unknown): string { return `<pre>${escapeHtml(JSON.stringify(value, null, 2))}</pre>`; }
-function tree(node: SearchTreeNode): string {
-  const failed = node.type === "CONSTRAINT_FAILED";
-  const backtracking = node.type === "BACKTRACK";
-  const solution = node.type === "SOLUTION_FOUND";
-  return `<div class="tree-node ${failed ? "failed" : ""} ${backtracking ? "backtracking" : ""} ${solution ? "solution" : ""}"><strong>${escapeHtml(node.type)}</strong> <span class="muted">depth ${node.depth}, order ${node.order}</span>${node.variable ? ` | ${escapeHtml(node.variable)}` : ""}${node.value !== undefined ? ` = ${escapeHtml(node.value)}` : ""}${node.reason ? `<div>${escapeHtml(node.reason)}</div>` : ""}${Object.keys(node.assignment).length ? json(node.assignment) : ""}${node.children.map(tree).join("")}</div>`;
+
+function findRoom(id: string | undefined): number {
+  return state.rooms.findIndex((item) => item.id === id);
 }
-function resultView(result: PipelineResult): string {
-  if (result.status === "infeasible") return `<section><h2>CSP Result</h2><div class="error">${escapeHtml(result.output.error)}</div>${json(result.output.csp.statistics)}<details><summary>Raw CSP events</summary>${json(result.cspEvents)}</details></section>`;
+
+function findDevice(roomIndex: number, id: string | undefined): number {
+  return state.rooms[roomIndex]?.devices.findIndex((item) => item.id === id) ?? -1;
+}
+
+function applyTreeZoom(): void {
+  const canvas = document.querySelector<HTMLDivElement>("#tree-canvas");
+  const scroll = document.querySelector<HTMLDivElement>("#tree-scroll");
+  const svg = canvas?.querySelector<SVGSVGElement>("svg");
+  if (canvas) canvas.style.transformOrigin = "top left";
+  if (canvas && svg) {
+    const svgWidth = Number(svg.getAttribute("width") ?? "0");
+    const availableWidth = scroll?.clientWidth ?? 0;
+    const fitScale = svgWidth > 0 && availableWidth > 0
+      ? Math.min(1, availableWidth / svgWidth)
+      : 1;
+    const scale = treeFit ? Math.max(0.45, fitScale) : treeZoom;
+    canvas.style.transform = `scale(${scale})`;
+    canvas.style.width = `${svgWidth * scale}px`;
+    canvas.style.height = `${Number(svg.getAttribute("height") ?? "0") * scale}px`;
+  }
+}
+
+function resultView(result: PipelineResult, scenario: Scenario): string {
+  if (result.status === "infeasible") {
+    return `<section class="block">
+      <h2>No feasible configuration</h2>
+      <p class="lede">${escapeHtml(result.output.error)}</p>
+      <p>The CSP solver could not satisfy the current constraints. Adjust a rule or a device state, then run again.</p>
+    </section>`;
+  }
+
   const output = result.output;
-  const backtracking = output.visualisation.backtracking;
-  const hill = output.visualisation.hillClimbing;
-  const hillRows = hill?.records.map((record) => `<tr><td>${record.iteration}</td><td>${escapeHtml(record.type)}</td><td>${record.currentObjective.value}</td><td>${record.candidateObjective?.value ?? ""}</td><td class="${record.decision === "accepted" ? "accepted" : record.decision === "rejected" ? "rejected" : ""}">${record.decision ?? ""}</td><td>${escapeHtml(record.reason ?? "")}</td></tr>`).join("") ?? "";
-  const backtrackRows = backtracking?.records.map((record) => `<tr><td>${record.order}</td><td class="${record.type === "CONSTRAINT_FAILED" ? "rejected" : "accepted"}">${record.type}</td><td>${record.depth}</td><td>${escapeHtml(record.reason ?? "")}</td><td>${json(record.assignment)}</td></tr>`).join("") ?? "";
-  return `<section><p class="eyebrow">04 / EXECUTION RESULT</p><h2>Results</h2><div class="result-grid"><div class="metric"><strong>Scenario</strong><span>${escapeHtml(output.scenario.name)}</span></div><div class="metric"><strong>Building type</strong><span>${escapeHtml(output.scenario.buildingType)}</span></div><div class="metric"><strong>Rooms</strong><span>${output.scenario.roomCount}</span></div><div class="metric"><strong>Devices</strong><span>${output.scenario.deviceCount}</span></div></div><h3>CSP feasibility</h3>${json(output.csp.configuration)}<div class="result-grid"><div class="metric"><strong>Feasible</strong><span>Yes</span></div><div class="metric"><strong>Variables selected</strong><span>${output.csp.statistics.variablesSelected}</span></div><div class="metric"><strong>Values tried</strong><span>${output.csp.statistics.valuesTried}</span></div><div class="metric"><strong>Constraint failures</strong><span>${result.cspEvents.filter((event) => event.type === "CONSTRAINT_FAILED").length}</span></div><div class="metric"><strong>Backtracks</strong><span>${output.csp.statistics.backtracks}</span></div></div><h3>Energy comparison</h3><div class="result-grid"><div class="metric"><strong>Initial energy</strong><span>${output.energy.initial.energy} kWh</span></div><div class="metric"><strong>Optimised energy</strong><span>${output.energy.optimised.energy} kWh</span></div><div class="metric"><strong>Energy saved</strong><span>${output.energy.comparison.energySaved} kWh</span></div><div class="metric"><strong>Percentage saved</strong><span>${output.energy.comparison.percentageSaved}%</span></div></div><h3>Simple Hill Climbing</h3><div class="optimum">LOCAL OPTIMUM FOUND</div>${json(output.hillClimbing.finalState.configuration)}<details open><summary>CSP Search Tree</summary><div class="tree-scroll">${output.visualisation.searchTree ? tree(output.visualisation.searchTree.root) : "Unavailable"}</div></details><details open><summary>Backtracking events</summary>${backtracking?.records.length ? `<table><tr><th>Order</th><th>Type</th><th>Depth</th><th>Reason</th><th>Assignment</th></tr>${backtrackRows}</table>` : "No failures or backtracks."}</details><details open><summary>Hill Climbing timeline</summary>${hill ? `<table><tr><th>Iteration</th><th>Type</th><th>Current</th><th>Candidate</th><th>Decision</th><th>Reason</th></tr>${hillRows}</table>` : "Unavailable"}</details><details><summary>Raw CSP execution events</summary>${json(result.cspEvents)}</details><details><summary>Raw Hill Climbing execution events</summary>${json(result.hillClimbingEvents)}</details></section>`;
+  const maps: NameMaps = nameMapsFromScenario(scenario);
+  const breakdown = energyBreakdown(
+    scenario,
+    output.energy.initial.configuration,
+    output.energy.optimised.configuration,
+  );
+  const comparison = output.energy.comparison;
+  const consistent = totalsMatchPipeline(breakdown, comparison);
+  const deviceRows = breakdown.devices.map((row) =>
+    `<tr><td>${escapeHtml(row.roomName)}</td><td>${escapeHtml(row.deviceName)}</td><td>${escapeHtml(row.initialState)}</td><td>${escapeHtml(formatEnergy(row.initialEnergyKwh))}</td><td>${escapeHtml(row.optimisedState)}</td><td>${escapeHtml(formatEnergy(row.optimisedEnergyKwh))}</td></tr>`,
+  ).join("");
+  const roomRows = breakdown.rooms.map((row) =>
+    `<tr><td>${escapeHtml(row.roomName)}</td><td>${escapeHtml(formatEnergy(row.initialEnergyKwh))}</td><td>${escapeHtml(formatEnergy(row.optimisedEnergyKwh))}</td></tr>`,
+  ).join("");
+  const configRows = breakdown.devices.map((row) =>
+    `<tr><td>${escapeHtml(row.roomName)}</td><td>${escapeHtml(row.deviceName)}</td><td>${escapeHtml(row.initialState)}</td><td>${escapeHtml(row.optimisedState)}</td><td>${escapeHtml(formatEnergy(row.initialEnergyKwh))}</td><td>${escapeHtml(formatEnergy(row.optimisedEnergyKwh))}</td></tr>`,
+  ).join("");
+  const timeline = result.cspEvents
+    .map((event) => describeCspEvent(event, maps))
+    .filter((item): item is string => item !== undefined)
+    .map((item) => `<li>${escapeHtml(item)}</li>`)
+    .join("");
+  const hill = output.visualisation.hillClimbing?.records.map((record) => {
+    const source = result.hillClimbingEvents.find((event) => event.id === record.eventId);
+    const text = source === undefined ? record.reason ?? record.type : describeHillClimbingEvent(source);
+    return `<li>${escapeHtml(text)}</li>`;
+  }).join("") ?? "";
+
+  return `<section class="block">
+      <h2>Energy result</h2>
+      <p class="lede">Initial energy is the CSP feasible configuration that Hill Climbing starts from. Optimised energy is the configuration returned by Simple Hill Climbing. Both use Energy (kWh) = effective power (kW) × operating time (hours).</p>
+      <div class="metrics">
+        <div class="metric"><strong>Initial energy</strong><b>${escapeHtml(formatEnergy(comparison.initialEnergy))}</b></div>
+        <div class="metric"><strong>Optimised energy</strong><b>${escapeHtml(formatEnergy(comparison.optimisedEnergy))}</b></div>
+        <div class="metric"><strong>Energy saved</strong><b>${escapeHtml(formatEnergy(comparison.energySaved))}</b></div>
+        <div class="metric"><strong>Savings</strong><b>${escapeHtml(formatPercent(comparison.percentageSaved))}</b></div>
+      </div>
+      ${consistent ? "" : `<p class="status error">Device totals did not match the pipeline energy result. The four figures above remain the algorithm values.</p>`}
+      <h3>Energy by device</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Room</th><th>Device</th><th>Initial state</th><th>Initial energy</th><th>Optimised state</th><th>Optimised energy</th></tr></thead>
+        <tbody>${deviceRows}</tbody>
+      </table></div>
+      <h3>Energy by room</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Room</th><th>Initial</th><th>Optimised</th></tr></thead>
+        <tbody>${roomRows}</tbody>
+      </table></div>
+    </section>
+    <section class="block">
+      <h2>CSP search tree</h2>
+      <p class="lede">Each node is a real solver step. Branches are parent–child connections from the SearchTree built from CSP execution events. Constraint-check noise is omitted so assignment, failure, backtracking and the solution remain visible.</p>
+      ${output.visualisation.searchTree ? renderTreeSVG(output.visualisation.searchTree, maps) : "<p>Search tree unavailable.</p>"}
+      <h3>Search progress</h3>
+      <ol class="timeline">${timeline}</ol>
+    </section>
+    <section class="block">
+      <h2>Simple Hill Climbing</h2>
+      <p class="lede">Hill Climbing starts from the feasible CSP configuration and accepts the first feasible neighbour with strictly lower energy.</p>
+      <ol class="timeline">${hill}</ol>
+    </section>
+    <section class="block">
+      <h2>Final configuration</h2>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Room</th><th>Device</th><th>Initial state</th><th>Optimised state</th><th>Initial energy</th><th>Optimised energy</th></tr></thead>
+        <tbody>${configRows}</tbody>
+      </table></div>
+    </section>`;
 }
+
 function execute(): void {
   const message = document.querySelector<HTMLDivElement>("#message");
+  lastHtml = "";
+  const results = document.querySelector<HTMLDivElement>("#results");
+  if (results) results.innerHTML = "";
+  if (message) {
+    message.innerHTML = `<div class="status">Running CSP and Simple Hill Climbing with the values currently entered above…</div>`;
+  }
   try {
     readForm();
     const scenario = buildScenario(
@@ -142,6 +487,7 @@ function execute(): void {
       state.buildingType,
       state.temperature,
       state.timeOfDay,
+      state.lightIntensity,
       state.rooms,
       state.constraints,
     );
@@ -152,10 +498,85 @@ function execute(): void {
       direction: "minimise",
       evaluationBasis: "total configuration energy",
     });
-    document.querySelector<HTMLDivElement>("#results")!.innerHTML = resultView(result);
-    if (message) message.innerHTML = `<div class="success">Completed using the existing pipeline and actual execution events.</div>`;
+    lastHtml = resultView(result, loaded);
+    if (results) results.innerHTML = lastHtml;
+    applyTreeZoom();
+    if (message) {
+      message.innerHTML = result.status === "completed"
+        ? `<div class="status ok">Optimisation finished using the existing CSP, energy, and Hill Climbing pipeline.</div>`
+        : `<div class="status error">CSP found no feasible configuration.</div>`;
+    }
   } catch (error) {
-    if (message) message.innerHTML = `<div class="error">${escapeHtml(error instanceof Error ? error.message : "Unable to run scenario")}</div>`;
+    if (message) {
+      message.innerHTML = `<div class="status error">${escapeHtml(error instanceof Error ? error.message : "Unable to run scenario")}</div>`;
+    }
   }
 }
+
+app.addEventListener("click", (event) => {
+  const target = event.target as HTMLElement;
+  const button = target.closest("button[data-action]") as HTMLElement | null;
+  if (button === null) return;
+  const action = button.dataset.action;
+  if (action === "tree-zoom-in") {
+    treeFit = false;
+    treeZoom = Math.min(2.4, treeZoom * 1.15);
+    applyTreeZoom();
+    return;
+  }
+  if (action === "tree-zoom-out") {
+    treeFit = false;
+    treeZoom = Math.max(0.45, treeZoom / 1.15);
+    applyTreeZoom();
+    return;
+  }
+  if (action === "tree-zoom-reset") {
+    treeFit = false;
+    treeZoom = 1;
+    applyTreeZoom();
+    return;
+  }
+  if (action === "tree-fit") {
+    treeFit = true;
+    applyTreeZoom();
+    return;
+  }
+  if (action === "tree-start" || action === "tree-end") {
+    const scroll = document.querySelector<HTMLDivElement>("#tree-scroll");
+    const target = document.querySelector<SVGGElement>(
+      action === "tree-start" ? ".tree-node-root" : ".tree-node-solution",
+    );
+    if (scroll && target) {
+      target.scrollIntoView({ behavior: "smooth", block: "start", inline: "center" });
+    }
+    return;
+  }
+
+  readForm();
+  const roomIndex = findRoom(button.dataset.roomId);
+  const deviceIndex = findDevice(roomIndex, button.dataset.deviceId);
+  if (action === "add-room") addRoom(state, makeRoom());
+  if (action === "remove-room" && roomIndex >= 0) removeRoom(state, roomIndex);
+  if (action === "add-device" && roomIndex >= 0) addDevice(state, roomIndex, makeDevice());
+  if (action === "remove-device" && roomIndex >= 0 && deviceIndex >= 0) {
+    removeDevice(state, roomIndex, deviceIndex);
+  }
+  if (action === "add-state" && roomIndex >= 0 && deviceIndex >= 0) {
+    addState(state, roomIndex, deviceIndex, makeState());
+  }
+  if (action === "remove-state" && roomIndex >= 0 && deviceIndex >= 0) {
+    const stateIndex = state.rooms[roomIndex].devices[deviceIndex].states.findIndex(
+      (item) => item.id === button.dataset.stateId,
+    );
+    if (stateIndex >= 0) removeState(state, roomIndex, deviceIndex, stateIndex);
+  }
+  if (action === "add-constraint") addConstraint(state, makeConstraint());
+  if (action === "remove-constraint") {
+    const constraintIndex = state.constraints.findIndex((item) => item.id === button.dataset.constraintId);
+    if (constraintIndex >= 0) removeConstraint(state, constraintIndex);
+  }
+  if (action === "run") execute();
+  else render();
+});
+
 render();

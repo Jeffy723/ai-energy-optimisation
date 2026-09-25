@@ -91,6 +91,23 @@ describe("energy calculation", () => {
     expect(result.totalEnergyKwh).toBe(6);
   });
 
+  it("uses 2 kW for 4 hours as 8 kWh and does not multiply occupancy or context", () => {
+    const withContext: Scenario = {
+      ...scenario([
+        {
+          id: "r-1",
+          name: "Room r-1",
+          occupancy: 30,
+          devices: [device("d-1", 2, 4, [state("high", 2)])],
+        },
+      ]),
+      context: { temperature: 24, lightIntensity: 400 },
+    };
+    const result = calculateEnergy(withContext, { "d-1": "high" });
+    expect(result.totalEnergyKwh).toBe(8);
+    expect(result.devices).toHaveLength(1);
+  });
+
   it("returns zero energy for zero operating time", () => {
     const result = calculateEnergy(
       scenario([room("r-1", [device("d-1", 4, 0)])]),

@@ -39,7 +39,15 @@ function parentFor(
   event: CspExecutionEvent,
   root: MutableNode,
   contexts: Map<number, MutableNode>,
+  alternativeParents: Map<number, MutableNode>,
 ): MutableNode {
+  if (event.type === "VALUE_TRIED") {
+    const alternativeParent = alternativeParents.get(event.depth);
+    if (alternativeParent !== undefined) {
+      alternativeParents.delete(event.depth);
+      return alternativeParent;
+    }
+  }
   if (event.type === "VARIABLE_SELECTED") {
     return contexts.get(event.depth - 1) ?? root;
   }
@@ -56,10 +64,12 @@ export function buildSearchTree(events: readonly CspExecutionEvent[]): SearchTre
     children: [],
   };
   const contexts = new Map<number, MutableNode>();
+  const selectedContexts = new Map<number, MutableNode>();
+  const alternativeParents = new Map<number, MutableNode>();
   const eventOrder: string[] = [];
 
   events.forEach((event, order) => {
-    const parent = parentFor(event, root, contexts);
+    const parent = parentFor(event, root, contexts, alternativeParents);
     const node: MutableNode = {
       id: `csp-tree-node-${order}`,
       eventId: event.id,
@@ -95,7 +105,11 @@ export function buildSearchTree(events: readonly CspExecutionEvent[]): SearchTre
     ) {
       contexts.set(event.depth, node);
     }
+    if (event.type === "VARIABLE_SELECTED") {
+      selectedContexts.set(event.depth, node);
+    }
     if (event.type === "BACKTRACK") {
+      alternativeParents.set(event.depth, selectedContexts.get(event.depth) ?? parent);
       for (const depth of [...contexts.keys()]) {
         if (depth > event.depth) contexts.delete(depth);
       }

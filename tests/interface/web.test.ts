@@ -14,7 +14,7 @@ import {
 import type { ConstraintDraft, DeviceDraft, RoomDraft } from "../../src/interface/web/contracts.js";
 
 function device(id: string): DeviceDraft {
-  return { id, type: "generic", ratedPower: "2", operatingTime: "6", states: [{ id: `${id}-state-1`, effectivePower: "0" }, { id: `${id}-state-2`, effectivePower: "1" }] };
+  return { id, type: "generic", ratedPower: "2", operatingTime: "6", states: [{ id: `${id}-state-1`, name: "Off", effectivePower: "0" }, { id: `${id}-state-2`, name: "On", effectivePower: "1" }] };
 }
 function room(id: string): RoomDraft {
   return { id, name: id, occupancy: "25", devices: [device(`${id}-device-1`)] };
@@ -30,6 +30,7 @@ describe("browser scenario builder", () => {
       "any building",
       "21",
       "morning",
+      "350",
       [{
         id: "room-a",
         name: "Room A",
@@ -39,7 +40,7 @@ describe("browser scenario builder", () => {
           type: "user device",
           ratedPower: "2",
           operatingTime: "4",
-          states: [{ id: "off", effectivePower: "0" }, { id: "active", effectivePower: "2" }],
+          states: [{ id: "off", name: "Off", effectivePower: "0" }, { id: "active", name: "Active", effectivePower: "2" }],
         }],
       }],
       [{
@@ -54,7 +55,7 @@ describe("browser scenario builder", () => {
     );
 
     expect(scenario.building.rooms[0].devices[0].availableStates).toHaveLength(2);
-    expect(scenario.context).toEqual({ temperature: 21, timeOfDay: "morning" });
+    expect(scenario.context).toEqual({ temperature: 21, timeOfDay: "morning", lightIntensity: 350 });
     expect(scenario.constraints[0].semantics).toEqual({
       kind: "forbid-states-when-room-occupancy",
       deviceIds: ["device-a"],
@@ -64,19 +65,61 @@ describe("browser scenario builder", () => {
   });
 
   it("rejects a builder with no rooms or non-numeric values", () => {
-    expect(() => buildScenario("x", "generic", "", "", [], [])).toThrow(/room/);
-    expect(() => buildScenario("x", "generic", "", "", [{
+    expect(() => buildScenario("x", "generic", "", "", "", [], [])).toThrow(/room/);
+    expect(() => buildScenario("x", "generic", "", "", "", [{
       id: "room",
       name: "Room",
       occupancy: "not-a-number",
-      devices: [],
-    }], [])).toThrow(/occupancy/);
+      devices: [device("d-1")],
+    }], [{
+      id: "c-1",
+      description: "rule",
+      kind: "forbid-states-when-room-occupancy",
+      deviceIds: ["d-1"],
+      occupancy: "0",
+      stateIds: ["d-1-state-1"],
+      stateId: "",
+    }])).toThrow(/occupancy/);
+  });
+
+  it("rejects blank numeric values instead of silently converting them to zero", () => {
+    expect(() => buildScenario("x", "generic", "", "", "", [{
+      id: "room",
+      name: "Room",
+      occupancy: "",
+      devices: [device("d-1")],
+    }], [{
+      id: "c-1",
+      description: "rule",
+      kind: "forbid-states-when-room-occupancy",
+      deviceIds: ["d-1"],
+      occupancy: "0",
+      stateIds: ["d-1-state-1"],
+      stateId: "",
+    }])).toThrow(/occupancy.*required/);
+  });
+
+  it("rejects constraint states that are not available on selected devices", () => {
+    expect(() => buildScenario("x", "generic", "", "", "", [{
+      id: "room",
+      name: "Room",
+      occupancy: "1",
+      devices: [device("d-1")],
+    }], [{
+      id: "c-1",
+      description: "rule",
+      kind: "forbid-states-when-room-occupancy",
+      deviceIds: ["d-1"],
+      occupancy: "1",
+      stateIds: ["missing-state"],
+      stateId: "",
+    }])).toThrow(/not available/);
   });
 
   it("supports repeated nested add operations without changing existing values", () => {
     const state: BuilderCollections = { rooms: [room("room-1")], constraints: [] };
-    addState(state, 0, 0, { id: "state-3", effectivePower: "2" });
-    addState(state, 0, 0, { id: "state-4", effectivePower: "3" });
+    addState(state, 0, 0, { id: "state-3", name: "State 3", effectivePower: "2" });
+    addState(state, 0, 0, { id: "state-4", name: "State 4", effectivePower: "3" });
     addDevice(state, 0, device("device-2"));
     addDevice(state, 0, device("device-3"));
     addRoom(state, room("room-2"));

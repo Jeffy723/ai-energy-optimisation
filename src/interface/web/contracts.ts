@@ -1,6 +1,11 @@
 import type { ScenarioConstraintSemantics } from "../../problem/scenario/contracts.js";
 
-export interface StateDraft { id: string; effectivePower: string; }
+export interface StateDraft {
+  id: string;
+  name: string;
+  effectivePower: string;
+}
+
 export interface DeviceDraft {
   id: string;
   type: string;
@@ -8,7 +13,14 @@ export interface DeviceDraft {
   operatingTime: string;
   states: StateDraft[];
 }
-export interface RoomDraft { id: string; name: string; occupancy: string; devices: DeviceDraft[]; }
+
+export interface RoomDraft {
+  id: string;
+  name: string;
+  occupancy: string;
+  devices: DeviceDraft[];
+}
+
 export interface ConstraintDraft {
   id: string;
   description: string;
@@ -17,4 +29,14 @@ export interface ConstraintDraft {
   occupancy: string;
   stateIds: string[];
   stateId: string;
+}
+
+export interface ScenarioFormState {
+  scenarioName: string;
+  buildingType: string;
+  temperature: string;
+  timeOfDay: string;
+  lightIntensity: string;
+  rooms: RoomDraft[];
+  constraints: ConstraintDraft[];
 }
