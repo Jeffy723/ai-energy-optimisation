@@ -386,6 +386,17 @@ function handleConstraintRuleChange(select: HTMLSelectElement): void {
   render();
 }
 
+function handleConstraintDeviceChange(select: HTMLSelectElement): void {
+  const constraintElement = select.closest<HTMLElement>('[data-role="constraint"]');
+  const constraintId = constraintElement?.dataset.constraintId;
+  if (constraintId === undefined) return;
+  const constraint = state.constraints.find((item) => item.id === constraintId);
+  if (constraint === undefined) return;
+
+  readForm();
+  render();
+}
+
 function applyTreeZoom(): void {
   const canvas = document.querySelector<HTMLDivElement>("#tree-canvas");
   const scroll = document.querySelector<HTMLDivElement>("#tree-scroll");
@@ -593,8 +604,14 @@ app.addEventListener("click", (event) => {
 
 app.addEventListener("change", (event) => {
   const target = event.target;
-  if (!(target instanceof HTMLSelectElement) || target.dataset.field !== "kind") return;
-  handleConstraintRuleChange(target);
+  if (!(target instanceof HTMLSelectElement)) return;
+  if (target.dataset.field === "kind") {
+    handleConstraintRuleChange(target);
+    return;
+  }
+  if (target.dataset.field === "deviceIds") {
+    handleConstraintDeviceChange(target);
+  }
 });
 
 render();
