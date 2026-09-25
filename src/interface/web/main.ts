@@ -374,6 +374,18 @@ function findDevice(roomIndex: number, id: string | undefined): number {
   return state.rooms[roomIndex]?.devices.findIndex((item) => item.id === id) ?? -1;
 }
 
+function handleConstraintRuleChange(select: HTMLSelectElement): void {
+  const constraintElement = select.closest<HTMLElement>('[data-role="constraint"]');
+  const constraintId = constraintElement?.dataset.constraintId;
+  if (constraintId === undefined) return;
+  const constraint = state.constraints.find((item) => item.id === constraintId);
+  if (constraint === undefined) return;
+
+  constraint.kind = select.value as ConstraintDraft["kind"];
+  readForm();
+  render();
+}
+
 function applyTreeZoom(): void {
   const canvas = document.querySelector<HTMLDivElement>("#tree-canvas");
   const scroll = document.querySelector<HTMLDivElement>("#tree-scroll");
@@ -577,6 +589,12 @@ app.addEventListener("click", (event) => {
   }
   if (action === "run") execute();
   else render();
+});
+
+app.addEventListener("change", (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLSelectElement) || target.dataset.field !== "kind") return;
+  handleConstraintRuleChange(target);
 });
 
 render();
