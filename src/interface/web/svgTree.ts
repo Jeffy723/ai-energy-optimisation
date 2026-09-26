@@ -3,7 +3,7 @@ import type { NameMaps } from "./presentation.js";
 import { deviceLabel, formatAssignment, stateLabel } from "./presentation.js";
 
 const NODE_WIDTH = 214;
-const NODE_HEIGHT = 118;
+const NODE_HEIGHT = 168;
 const SIBLING_GAP = 36;
 const LEVEL_GAP = 72;
 
@@ -163,18 +163,48 @@ function detailText(node: SearchTreeNode, maps?: NameMaps): string {
     return node.reason ?? node.constraint?.reason ?? "This branch is infeasible";
   }
   if (node.type === "FORWARD_CHECK" && node.prunedValues !== undefined && node.prunedValues.length > 0) {
-    return node.prunedValues
+    const values = node.prunedValues
       .map((item) =>
         maps === undefined
           ? String(item.value)
           : `${deviceLabel(maps, item.variable)}=${stateLabel(maps, item.variable, item.value)}`,
       )
       .join(", ");
+    const method = node.pruningKind === "constraint-propagation"
+      ? "Propagation pruned"
+      : "Forward check pruned";
+    return `${method}: ${values}`;
   }
   if (node.type === "BACKTRACK") {
     return node.reason ?? "Search returns to the parent choice";
   }
   return "";
+}
+
+function detailLines(node: SearchTreeNode, maps?: NameMaps): string[] {
+  if (node.type !== "VARIABLE_SELECTED") {
+    const detail = detailText(node, maps);
+    return detail.length === 0 ? [] : [detail];
+  }
+  const lines = [`MRV · ${node.remainingValues ?? 0} remaining value(s)`];
+  if (node.degreeTieBreakUsed) lines.push("Degree heuristic · tie-break");
+  if (node.lcvOrder !== undefined) {
+    const ordered = node.lcvOrder.map((value) =>
+      maps ? stateLabel(maps, node.variable ?? "", value) : String(value),
+    );
+    let line = `LCV order · ${ordered[0] ?? ""}`;
+    for (const value of ordered.slice(1)) {
+      const next = `${line} → ${value}`;
+      if (next.length <= 34) {
+        line = next;
+      } else {
+        lines.push(line);
+        line = `→ ${value}`;
+      }
+    }
+    if (line.length > 0) lines.push(line);
+  }
+  return lines;
 }
 
 function wrapLabel(text: string, max = 28): string {
@@ -211,7 +241,7 @@ function drawNodes(node: LayoutNode, maps?: NameMaps): string {
   const left = node.x - NODE_WIDTH / 2;
   const title = wrapLabel(titleFor(node.source, maps));
   const assignment = wrapLabel(assignmentText(node.source, maps), 32);
-  const detail = wrapLabel(detailText(node.source, maps), 32);
+  const details = detailLines(node.source, maps);
   const pathStroke = node.onSolutionPath && node.kind !== "failure" ? "#17663a" : style.stroke;
   const pathWidth = node.onSolutionPath ? 2.8 : 1.8;
   let svg = `<g transform="translate(${left}, ${node.y})" class="tree-node-graphic tree-node-${node.kind}" data-tree-node="${escapeHtml(node.id)}">
@@ -220,9 +250,9 @@ function drawNodes(node: LayoutNode, maps?: NameMaps): string {
     <text x="${NODE_WIDTH / 2}" y="50" text-anchor="middle" font-size="11" fill="#344054">${escapeHtml(assignment)}</text>
     <text x="${NODE_WIDTH / 2}" y="76" text-anchor="middle" font-size="12" font-weight="700" fill="${style.stroke}">${escapeHtml(style.badge)} ${escapeHtml(style.label)}</text>
   `;
-  if (detail.length > 0) {
-    svg += `<text x="${NODE_WIDTH / 2}" y="98" text-anchor="middle" font-size="10" fill="#475467">${escapeHtml(detail)}</text>`;
-  }
+  details.slice(0, 5).forEach((detail, index) => {
+    svg += `<text x="${NODE_WIDTH / 2}" y="${98 + index * 13}" text-anchor="middle" font-size="9" fill="#475467">${escapeHtml(wrapLabel(detail, 34))}</text>`;
+  });
   svg += "</g>";
   for (const child of node.children) svg += drawNodes(child, maps);
   return svg;
@@ -242,6 +272,20 @@ export function renderTreeSVG(tree: SearchTree, maps?: NameMaps): string {
   const padding = 28;
   const width = Math.max(bounds.maxX - bounds.minX + padding * 2, 320);
   const height = Math.max(bounds.maxY + padding * 2, 220);
+  const nodes: SearchTreeNode[] = [];
+  const visit = (node: SearchTreeNode): void => {
+    nodes.push(node);
+    node.children.forEach(visit);
+  };
+  visit(tree.root);
+  const hasDegreeTieBreak = nodes.some((node) => node.degreeTieBreakUsed);
+  const hasLcv = nodes.some((node) => node.lcvOrder !== undefined);
+  const hasForwardChecking = nodes.some(
+    (node) => node.type === "FORWARD_CHECK" && node.pruningKind === "forward-checking",
+  );
+  const hasPropagation = nodes.some(
+    (node) => node.type === "FORWARD_CHECK" && node.pruningKind === "constraint-propagation",
+  );
   return `<div class="tree-frame">
     <div class="tree-toolbar">
       <span><strong>START</strong> → decisions → backtracking → <strong>FINAL SOLUTION</strong></span>
@@ -265,10 +309,15 @@ export function renderTreeSVG(tree: SearchTree, maps?: NameMaps): string {
     </div>
     <ul class="tree-legend">
       <li><span class="swatch explore"></span>Normal exploration</li>
+      <li><span class="swatch explore"></span>MRV variable selection</li>
+      ${hasDegreeTieBreak ? '<li><span class="swatch explore"></span>Degree tie-break</li>' : ""}
+      ${hasLcv ? '<li><span class="swatch explore"></span>LCV value order</li>' : ""}
+      ${hasForwardChecking ? '<li><span class="swatch pruned"></span>Forward checking</li>' : ""}
+      ${hasPropagation ? '<li><span class="swatch pruned"></span>Constraint propagation</li>' : ""}
       <li><span class="swatch failure"></span>Constraint failure</li>
       <li><span class="swatch backtrack"></span>Backtracking</li>
       <li><span class="swatch solution"></span>Solution path</li>
-      <li><span class="swatch pruned"></span>Pruned branch</li>
+      ${hasForwardChecking || hasPropagation ? '<li><span class="swatch pruned"></span>Pruned branch</li>' : ""}
     </ul>
   </div>`;
 }

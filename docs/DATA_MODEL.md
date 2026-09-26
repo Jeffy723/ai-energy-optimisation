@@ -133,6 +133,12 @@ Every CSP event contains enough information for visualisation to reconstruct the
 - constraint information, where relevant
 - <code>reason</code>, where relevant
 
+Variable-selection events also expose the current remaining-domain size,
+whether the Degree Heuristic changed the MRV tie-break choice, and the actual
+LCV value order when neighbouring constraints were evaluated. Forward-check
+events identify whether pruning came from forward checking or constraint
+propagation and include the values actually removed.
+
 | Event type | Purpose |
 | --- | --- |
 | <code>VARIABLE_SELECTED</code> | Records the variable selected for assignment. |

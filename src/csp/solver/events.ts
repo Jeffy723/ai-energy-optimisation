@@ -58,7 +58,9 @@ export class EventCollector {
     variable: CspVariableId,
     depth: number,
     assignment: CspConfiguration,
-    reason?: string,
+    remainingValues: number,
+    degreeTieBreakUsed: boolean,
+    lcvOrder?: readonly CspValue[],
   ): void {
     const event: VariableSelectedEvent = {
       id: this.nextId(),
@@ -67,7 +69,10 @@ export class EventCollector {
       depth,
       variable,
       assignment: this.snap(assignment),
-      reason,
+      remainingValues,
+      degreeTieBreakUsed,
+      ...(lcvOrder === undefined ? {} : { lcvOrder: [...lcvOrder] }),
+      reason: `MRV selected ${variable} with ${remainingValues} remaining value(s)`,
     };
     this._events.push(event);
   }

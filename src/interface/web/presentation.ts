@@ -132,8 +132,16 @@ export function totalsMatchPipeline(
 
 export function describeCspEvent(event: CspExecutionEvent, maps: NameMaps): string | undefined {
   switch (event.type) {
-    case "VARIABLE_SELECTED":
-      return `Variable selected: ${deviceLabel(maps, event.variable)}`;
+    case "VARIABLE_SELECTED": {
+      const indicators = [`MRV → ${event.remainingValues} remaining value(s)`];
+      if (event.degreeTieBreakUsed) indicators.push("Degree heuristic → tie-break");
+      if (event.lcvOrder !== undefined) {
+        indicators.push(
+          `LCV order → ${event.lcvOrder.map((value) => stateLabel(maps, event.variable, value)).join(" → ")}`,
+        );
+      }
+      return `Selected ${deviceLabel(maps, event.variable)} · ${indicators.join(" · ")}`;
+    }
     case "VALUE_TRIED":
       return `Value tried: ${deviceLabel(maps, event.variable)} = ${stateLabel(maps, event.variable, event.value)}`;
     case "CONSTRAINT_FAILED":
@@ -142,7 +150,11 @@ export function describeCspEvent(event: CspExecutionEvent, maps: NameMaps): stri
       const pruned = event.prunedValues
         .map((item) => `${deviceLabel(maps, item.variable)} = ${stateLabel(maps, item.variable, item.value)}`)
         .join(", ");
-      return pruned.length === 0 ? "Forward checking (no values pruned)" : `Pruned values: ${pruned}`;
+      if (pruned.length === 0) return "Forward checking (no values pruned)";
+      const method = event.pruningKind === "constraint-propagation"
+        ? "Constraint propagation"
+        : "Forward checking";
+      return `${method} · pruned: ${pruned}`;
     }
     case "BACKTRACK":
       return event.variable === undefined

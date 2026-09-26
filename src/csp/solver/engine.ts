@@ -35,8 +35,8 @@ import type { SolvableCspProblem } from "../model/evaluation.js";
 import type { CspSearchResult, CspSearchStatistics } from "./contracts.js";
 import type { CspExecutionEvent } from "../../visualisation/events/contracts.js";
 import { EventCollector } from "./events.js";
-import { selectVariable } from "../heuristics/variableOrdering.js";
-import { orderValues } from "../heuristics/valueOrdering.js";
+import { selectVariableWithDetails } from "../heuristics/variableOrdering.js";
+import { orderValuesWithDetails } from "../heuristics/valueOrdering.js";
 import { infer } from "../heuristics/inference.js";
 
 // ---------------------------------------------------------------------------
@@ -146,18 +146,34 @@ function backtrack(
   }
 
   // 1. Select variable (MRV + Degree).
-  const variable = selectVariable(unassigned, domains, problem.constraints);
-  if (variable === undefined) {
+  const selection = selectVariableWithDetails(unassigned, domains, problem.constraints);
+  if (selection === undefined) {
     // Should not happen if unassigned is non-empty, but handle defensively.
     return null;
   }
+  const { variable } = selection;
 
   stats.variablesSelected++;
   const config = snapshotConfig(assignment);
-  events.emitVariableSelected(variable, depth, config, `MRV selected ${variable}`);
 
   // 2. Order domain values (LCV).
   const rawDomain = domains.get(variable);
+  const ordering = orderValuesWithDetails(
+    variable,
+    rawDomain ?? [],
+    config,
+    unassigned.filter((v) => v !== variable),
+    domains,
+    problem.constraints,
+  );
+  events.emitVariableSelected(
+    variable,
+    depth,
+    config,
+    selection.remainingValues,
+    selection.degreeTieBreakUsed,
+    ordering.lcvApplied ? ordering.values : undefined,
+  );
   if (!rawDomain || rawDomain.length === 0) {
     // Domain empty — backtrack.
     stats.backtracks++;
@@ -172,14 +188,7 @@ function backtrack(
     return null;
   }
 
-  const orderedValues = orderValues(
-    variable,
-    rawDomain,
-    config,
-    unassigned.filter((v) => v !== variable),
-    domains,
-    problem.constraints,
-  );
+  const orderedValues = ordering.values;
 
   // 3. Try each value.
   for (const value of orderedValues) {
@@ -202,8 +211,16 @@ function backtrack(
     );
 
     if (!constraintOk) {
-      // Undo assignment and try next value.
       delete assignment[variable];
+      stats.backtracks++;
+      events.emitBacktrack(
+        depth,
+        snapshotConfig(assignment),
+        variable,
+        value,
+        undefined,
+        `Constraint failure for ${variable}=${String(value)}; trying the next value`,
+      );
       continue;
     }
 

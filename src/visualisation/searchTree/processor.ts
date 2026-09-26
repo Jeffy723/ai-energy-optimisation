@@ -10,6 +10,9 @@ interface MutableNode {
   assignment: Record<string, import("../../csp/model/contracts.js").CspValue>;
   variable?: string;
   value?: import("../../csp/model/contracts.js").CspValue;
+  remainingValues?: number;
+  degreeTieBreakUsed?: boolean;
+  lcvOrder?: readonly import("../../csp/model/contracts.js").CspValue[];
   constraint?: import("../../csp/model/contracts.js").ConstraintEvaluationResult;
   pruningKind?: "forward-checking" | "constraint-propagation";
   prunedValues?: readonly { readonly variable: string; readonly value: import("../../csp/model/contracts.js").CspValue }[];
@@ -27,6 +30,9 @@ function copyNode(node: MutableNode): SearchTreeNode {
     assignment: { ...node.assignment },
     ...(node.variable === undefined ? {} : { variable: node.variable }),
     ...(node.value === undefined ? {} : { value: node.value }),
+    ...(node.remainingValues === undefined ? {} : { remainingValues: node.remainingValues }),
+    ...(node.degreeTieBreakUsed === undefined ? {} : { degreeTieBreakUsed: node.degreeTieBreakUsed }),
+    ...(node.lcvOrder === undefined ? {} : { lcvOrder: [...node.lcvOrder] }),
     ...(node.constraint === undefined ? {} : { constraint: { ...node.constraint, assignment: { ...node.constraint.assignment } } }),
     ...(node.pruningKind === undefined ? {} : { pruningKind: node.pruningKind }),
     ...(node.prunedValues === undefined ? {} : { prunedValues: node.prunedValues.map((item) => ({ ...item })) }),
@@ -39,14 +45,10 @@ function parentFor(
   event: CspExecutionEvent,
   root: MutableNode,
   contexts: Map<number, MutableNode>,
-  alternativeParents: Map<number, MutableNode>,
+  selectedContexts: Map<number, MutableNode>,
 ): MutableNode {
   if (event.type === "VALUE_TRIED") {
-    const alternativeParent = alternativeParents.get(event.depth);
-    if (alternativeParent !== undefined) {
-      alternativeParents.delete(event.depth);
-      return alternativeParent;
-    }
+    return selectedContexts.get(event.depth) ?? contexts.get(event.depth) ?? root;
   }
   if (event.type === "VARIABLE_SELECTED") {
     return contexts.get(event.depth - 1) ?? root;
@@ -65,11 +67,10 @@ export function buildSearchTree(events: readonly CspExecutionEvent[]): SearchTre
   };
   const contexts = new Map<number, MutableNode>();
   const selectedContexts = new Map<number, MutableNode>();
-  const alternativeParents = new Map<number, MutableNode>();
   const eventOrder: string[] = [];
 
   events.forEach((event, order) => {
-    const parent = parentFor(event, root, contexts, alternativeParents);
+    const parent = parentFor(event, root, contexts, selectedContexts);
     const node: MutableNode = {
       id: `csp-tree-node-${order}`,
       eventId: event.id,
@@ -83,6 +84,13 @@ export function buildSearchTree(events: readonly CspExecutionEvent[]): SearchTre
         : {}),
       ...(event.type === "VALUE_TRIED" || event.type === "BACKTRACK"
         ? { value: event.value }
+        : {}),
+      ...(event.type === "VARIABLE_SELECTED"
+        ? {
+            remainingValues: event.remainingValues,
+            degreeTieBreakUsed: event.degreeTieBreakUsed,
+            ...(event.lcvOrder === undefined ? {} : { lcvOrder: [...event.lcvOrder] }),
+          }
         : {}),
       ...(event.type === "CONSTRAINT_CHECKED" || event.type === "CONSTRAINT_FAILED"
         ? { constraint: { ...event.constraint, assignment: { ...event.constraint.assignment } } }
@@ -109,7 +117,6 @@ export function buildSearchTree(events: readonly CspExecutionEvent[]): SearchTre
       selectedContexts.set(event.depth, node);
     }
     if (event.type === "BACKTRACK") {
-      alternativeParents.set(event.depth, selectedContexts.get(event.depth) ?? parent);
       for (const depth of [...contexts.keys()]) {
         if (depth > event.depth) contexts.delete(depth);
       }

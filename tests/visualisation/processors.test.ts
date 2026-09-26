@@ -22,7 +22,7 @@ function cspEvents(): readonly CspExecutionEvent[] {
   return [
     {
       id: "e-0", type: "VARIABLE_SELECTED", step: 0, depth: 0,
-      variable: "variable-a", assignment: {},
+      variable: "variable-a", assignment: {}, remainingValues: 2, degreeTieBreakUsed: false,
     },
     {
       id: "e-1", type: "VALUE_TRIED", step: 1, depth: 0,
@@ -51,7 +51,7 @@ function cspEvents(): readonly CspExecutionEvent[] {
     },
     {
       id: "e-6", type: "VARIABLE_SELECTED", step: 6, depth: 1,
-      variable: "variable-b", assignment: { "variable-a": "second" },
+      variable: "variable-b", assignment: { "variable-a": "second" }, remainingValues: 1, degreeTieBreakUsed: true,
     },
     {
       id: "e-7", type: "VALUE_TRIED", step: 7, depth: 1,

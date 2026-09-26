@@ -33,36 +33,38 @@ export function selectVariable(
   domains: ReadonlyMap<CspVariableId, readonly CspValue[]>,
   constraints: readonly SolvableConstraint[],
 ): CspVariableId | undefined {
+  return selectVariableWithDetails(unassigned, domains, constraints)?.variable;
+}
+
+export interface VariableSelection {
+  readonly variable: CspVariableId;
+  readonly remainingValues: number;
+  readonly degreeTieBreakUsed: boolean;
+}
+
+export function selectVariableWithDetails(
+  unassigned: readonly CspVariableId[],
+  domains: ReadonlyMap<CspVariableId, readonly CspValue[]>,
+  constraints: readonly SolvableConstraint[],
+): VariableSelection | undefined {
   if (unassigned.length === 0) return undefined;
 
-  // Build an unassigned set for fast lookup.
   const unassignedSet = new Set(unassigned);
-
-  let bestVariable: CspVariableId = unassigned[0];
-  let bestDomainSize = domainSize(bestVariable, domains);
-  let bestDegree = degree(bestVariable, unassignedSet, constraints);
-
-  for (let i = 1; i < unassigned.length; i++) {
-    const v = unassigned[i];
-    const ds = domainSize(v, domains);
-
-    if (ds < bestDomainSize) {
-      // Strictly smaller domain — wins MRV.
-      bestVariable = v;
-      bestDomainSize = ds;
-      bestDegree = degree(v, unassignedSet, constraints);
-    } else if (ds === bestDomainSize) {
-      // Tie on MRV — break with Degree.
-      const deg = degree(v, unassignedSet, constraints);
-      if (deg > bestDegree) {
-        bestVariable = v;
-        bestDegree = deg;
-      }
-      // If Degree also ties, we keep the earlier variable (stable ordering).
-    }
-  }
-
-  return bestVariable;
+  const ranked = unassigned.map((variable) => ({
+    variable,
+    remainingValues: domainSize(variable, domains),
+    degree: degree(variable, unassignedSet, constraints),
+  }));
+  const minimumRemaining = Math.min(...ranked.map((item) => item.remainingValues));
+  const mrvCandidates = ranked.filter((item) => item.remainingValues === minimumRemaining);
+  const highestDegree = Math.max(...mrvCandidates.map((item) => item.degree));
+  const selected = mrvCandidates.find((item) => item.degree === highestDegree)!;
+  return {
+    variable: selected.variable,
+    remainingValues: selected.remainingValues,
+    degreeTieBreakUsed:
+      mrvCandidates.length > 1 && selected.variable !== mrvCandidates[0].variable,
+  };
 }
 
 function domainSize(

@@ -43,7 +43,30 @@ export function orderValues(
   domains: ReadonlyMap<CspVariableId, readonly CspValue[]>,
   constraints: readonly SolvableConstraint[],
 ): readonly CspValue[] {
-  if (values.length <= 1) return values;
+  return orderValuesWithDetails(
+    variable,
+    values,
+    assignment,
+    unassigned,
+    domains,
+    constraints,
+  ).values;
+}
+
+export interface ValueOrdering {
+  readonly values: readonly CspValue[];
+  readonly lcvApplied: boolean;
+}
+
+export function orderValuesWithDetails(
+  variable: CspVariableId,
+  values: readonly CspValue[],
+  assignment: CspConfiguration,
+  unassigned: readonly CspVariableId[],
+  domains: ReadonlyMap<CspVariableId, readonly CspValue[]>,
+  constraints: readonly SolvableConstraint[],
+): ValueOrdering {
+  if (values.length <= 1) return { values, lcvApplied: false };
 
   // Find constraints that involve `variable` and at least one unassigned neighbour.
   const relevantConstraints: SolvableConstraint[] = [];
@@ -60,8 +83,7 @@ export function orderValues(
   }
 
   if (relevantConstraints.length === 0) {
-    // No neighbouring constraints — every value is equally constraining.
-    return values;
+    return { values, lcvApplied: false };
   }
 
   // For each candidate value, count how many neighbour-domain values it rules out.
@@ -82,7 +104,7 @@ export function orderValues(
   // Stable sort ascending by ruledOut (least constraining first).
   scored.sort((a, b) => a.ruledOut - b.ruledOut);
 
-  return scored.map((s) => s.value);
+  return { values: scored.map((s) => s.value), lcvApplied: true };
 }
 
 /**

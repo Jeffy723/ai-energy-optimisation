@@ -349,6 +349,7 @@ describe("CSP Solver — MRV heuristic", () => {
     expect(firstVarSelected).toBeDefined();
     if (firstVarSelected && firstVarSelected.type === "VARIABLE_SELECTED") {
       expect(firstVarSelected.variable).toBe("X");
+      expect(firstVarSelected.remainingValues).toBe(1);
     }
   });
 });
@@ -384,6 +385,7 @@ describe("CSP Solver — Degree heuristic", () => {
     expect(firstVarSelected).toBeDefined();
     if (firstVarSelected && firstVarSelected.type === "VARIABLE_SELECTED") {
       expect(firstVarSelected.variable).toBe("A");
+      expect(firstVarSelected.degreeTieBreakUsed).toBe(true);
     }
   });
 });
@@ -604,6 +606,20 @@ describe("CSP Solver — event emission basics", () => {
     expect(valueTried.length).toBeGreaterThanOrEqual(1);
   });
 
+  it("emits the real LCV order when neighbouring constraints are used", () => {
+    const problem = makeProblem(
+      ["A", "B"],
+      { A: ["red", "blue"], B: ["red", "blue"] },
+      [notEqual("ab", "A", "B")],
+    );
+    const { events } = solve(problem);
+    const selected = events.find((event) => event.type === "VARIABLE_SELECTED");
+    expect(selected?.type).toBe("VARIABLE_SELECTED");
+    if (selected?.type === "VARIABLE_SELECTED") {
+      expect(selected.lcvOrder).toEqual(["red", "blue"]);
+    }
+  });
+
   it("events have monotonically increasing step numbers", () => {
     const problem = makeProblem(
       ["A", "B"],
@@ -701,6 +717,17 @@ describe("CSP Solver — BACKTRACK event", () => {
       expect(backtracks[0].type).toBe("BACKTRACK");
     }
     expect(events.length).toBeGreaterThan(0);
+  });
+
+  it("emits a backtrack immediately after each directly rejected value", () => {
+    const { events } = solve(makeProblem(
+      ["X"],
+      { X: ["a"] },
+      [mustNotEqual("mne", "X", "a")],
+    ));
+    const failedIndex = events.findIndex((event) => event.type === "CONSTRAINT_FAILED");
+    expect(failedIndex).toBeGreaterThanOrEqual(0);
+    expect(events[failedIndex + 1]?.type).toBe("BACKTRACK");
   });
 });
 
