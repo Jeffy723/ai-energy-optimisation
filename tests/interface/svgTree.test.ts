@@ -16,7 +16,20 @@ function events(): readonly CspExecutionEvent[] {
     { id: "e-3", type: "BACKTRACK", step: 3, depth: 0, variable: "ac", value: "off", assignment: {}, reason: "try another value" },
     { id: "e-4", type: "VALUE_TRIED", step: 4, depth: 0, variable: "ac", value: "high", assignment: { ac: "high" } },
     { id: "e-5", type: "CONSTRAINT_CHECKED", step: 5, depth: 0, constraint: { constraintId: "c1", status: "satisfied", assignment: { ac: "high" } }, assignment: { ac: "high" } },
-    { id: "e-6", type: "VARIABLE_SELECTED", step: 6, depth: 1, variable: "light", assignment: { ac: "high" }, remainingValues: 2, degreeTieBreakUsed: true, lcvOrder: ["Device B-free", "Device B-limited"] },
+    {
+      id: "e-6", type: "VARIABLE_SELECTED", step: 6, depth: 1,
+      variable: "light", assignment: { ac: "high" }, remainingValues: 2,
+      degreeTieBreakUsed: true,
+      mrvTie: {
+        candidates: [
+          { variable: "light", remainingValues: 2, degree: 2 },
+          { variable: "fan", remainingValues: 2, degree: 1 },
+        ],
+        selectedVariable: "light",
+        reason: "Selected the highest-degree MRV candidate (2)",
+      },
+      lcvOrder: ["Device B-free", "Device B-limited"],
+    },
     { id: "e-7", type: "VALUE_TRIED", step: 7, depth: 1, variable: "light", value: "on", assignment: { ac: "high", light: "on" } },
     { id: "e-8", type: "SOLUTION_FOUND", step: 8, depth: 1, assignment: { ac: "high", light: "on" } },
   ];
@@ -50,7 +63,7 @@ describe("SVG search-tree layout", () => {
     expect(assignmentNodes[0].x).not.toBe(assignmentNodes[1].x);
     const rendered = renderTreeSVG(tree);
     expect(rendered).toContain("MRV · 2 remaining value(s)");
-    expect(rendered).toContain("Degree heuristic · tie-break");
+    expect(rendered).toContain("Degree selected light");
     expect(rendered).toContain("LCV order · Device B-free");
     expect(rendered).toContain("→ Device B-limited");
     expect(rendered).toContain("Degree tie-break");
@@ -85,6 +98,34 @@ describe("SVG search-tree layout", () => {
     expect(rendered).toContain("Propagation pruned");
     expect(rendered).toContain("Forward checking</li>");
     expect(rendered).toContain("Constraint propagation</li>");
+  });
+
+  it("renders actual MRV tie candidates, degrees, and selected variable", () => {
+    const tree = buildSearchTree([{
+      id: "degree-selection",
+      type: "VARIABLE_SELECTED",
+      step: 0,
+      depth: 0,
+      variable: "ac",
+      assignment: {},
+      remainingValues: 2,
+      degreeTieBreakUsed: true,
+      mrvTie: {
+        candidates: [
+          { variable: "ac", remainingValues: 2, degree: 2 },
+          { variable: "light", remainingValues: 2, degree: 1 },
+          { variable: "fan", remainingValues: 2, degree: 1 },
+        ],
+        selectedVariable: "ac",
+        reason: "Selected the highest-degree MRV candidate (2)",
+      },
+    }]);
+    const rendered = renderTreeSVG(tree);
+
+    expect(rendered).toContain("MRV tie · ac (2), light (2), fan (2)");
+    expect(rendered).toContain("Degree · ac=2, light=1, fan=1");
+    expect(rendered).toContain("Degree selected ac");
+    expect(rendered).toContain("Degree tie-break");
   });
 
   it("omits constraint-check nodes from the visual children", () => {

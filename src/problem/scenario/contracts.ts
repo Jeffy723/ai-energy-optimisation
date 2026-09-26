@@ -82,6 +82,51 @@ export type ScenarioConstraintSemantics =
       readonly deviceIds: readonly Identifier[];
       readonly occupancy: number;
       readonly stateId: Identifier;
+    }
+  | {
+      readonly kind: "forbid-states-when-condition";
+      readonly deviceIds: readonly Identifier[];
+      readonly condition: ScenarioConstraintCondition;
+      readonly stateIds: readonly Identifier[];
+    }
+  | {
+      readonly kind: "require-state-when-condition";
+      readonly deviceIds: readonly Identifier[];
+      readonly condition: ScenarioConstraintCondition;
+      readonly stateId: Identifier;
+    }
+  | {
+      readonly kind: "forbid-state-when-device-state";
+      readonly conditionDeviceId: Identifier;
+      readonly conditionStateId: Identifier;
+      readonly targetDeviceId: Identifier;
+      readonly forbiddenStateId: Identifier;
+    };
+
+export type NumericConditionOperator =
+  | "equals"
+  | "greater-than"
+  | "greater-than-or-equal"
+  | "less-than"
+  | "less-than-or-equal";
+
+export type ScenarioConstraintCondition =
+  | {
+      readonly type: "room-occupancy";
+      readonly operator: NumericConditionOperator;
+      readonly value: number;
+    }
+  | {
+      readonly type: "scenario-number";
+      readonly property: "temperature" | "lightIntensity";
+      readonly operator: NumericConditionOperator;
+      readonly value: number;
+    }
+  | {
+      readonly type: "scenario-text";
+      readonly property: "timeOfDay";
+      readonly operator: "equals";
+      readonly value: string;
     };
 
 export interface ObjectiveConfiguration {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { solve } from "../../src/csp/solver/engine.js";
+import { selectVariableWithDetails } from "../../src/csp/heuristics/variableOrdering.js";
 import {
   adaptScenarioConstraint,
   createSolvableCspProblem,
@@ -118,6 +119,236 @@ describe("scenario constraint adapter", () => {
       domains: new Map([["device", ["active"]]]),
     });
     expect(result.result.solution).toBeUndefined();
+  });
+
+  it.each([
+    [
+      { type: "scenario-number", property: "temperature", operator: "greater-than-or-equal", value: 25 },
+      { temperature: 26 },
+      "violated",
+    ],
+    [
+      { type: "scenario-number", property: "temperature", operator: "greater-than-or-equal", value: 25 },
+      { temperature: 24 },
+      "satisfied",
+    ],
+    [
+      { type: "scenario-number", property: "lightIntensity", operator: "less-than", value: 200 },
+      { lightIntensity: 120 },
+      "violated",
+    ],
+    [
+      { type: "scenario-number", property: "lightIntensity", operator: "less-than", value: 200 },
+      { lightIntensity: 240 },
+      "satisfied",
+    ],
+    [
+      { type: "scenario-text", property: "timeOfDay", operator: "equals", value: "evening" },
+      { timeOfDay: "evening" },
+      "violated",
+    ],
+  ] as const)("evaluates environment condition %s with context %s", (condition, context, status) => {
+    const scenario: Scenario = {
+      ...scenarioWith({
+        id: "environment-rule",
+        description: "Environment-dependent state rule",
+        semantics: {
+          kind: "forbid-states-when-condition",
+          deviceIds: ["device"],
+          condition,
+          stateIds: ["active"],
+        },
+      }),
+      context,
+    };
+    const problem = createSolvableCspProblem(scenario);
+    expect(problem.constraints[0].evaluate({ device: "active" }).status).toBe(status);
+  });
+
+  it("makes environmental rules constrain actual solver feasibility", () => {
+    const scenario: Scenario = {
+      ...scenarioWith({
+        id: "hot-room-rule",
+        description: "Reduce cooling load above the threshold",
+        semantics: {
+          kind: "forbid-states-when-condition",
+          deviceIds: ["device"],
+          condition: {
+            type: "scenario-number",
+            property: "temperature",
+            operator: "greater-than",
+            value: 24,
+          },
+          stateIds: ["active"],
+        },
+      }),
+      context: { temperature: 27 },
+    };
+    const problem = createSolvableCspProblem(scenario);
+    const result = solve({
+      ...problem,
+      domains: new Map([["device", ["active"]]]),
+    });
+    expect(result.result.solution).toBeUndefined();
+  });
+
+  it("rejects missing and invalid environmental context instead of silently satisfying a rule", () => {
+    const rule: ScenarioConstraint = {
+      id: "missing-temperature",
+      description: "Temperature-dependent rule",
+      semantics: {
+        kind: "require-state-when-condition",
+        deviceIds: ["device"],
+        condition: {
+          type: "scenario-number",
+          property: "temperature",
+          operator: "greater-than",
+          value: 24,
+        },
+        stateId: "active",
+      },
+    };
+    expect(() => createSolvableCspProblem(scenarioWith(rule))).toThrow(
+      /requires scenario context "temperature"/,
+    );
+    expect(() => createSolvableCspProblem({
+      ...scenarioWith(rule),
+      context: { temperature: "warm" },
+    })).toThrow(/must be a finite number/);
+  });
+
+  it("applies range comparisons to each selected device's room occupancy", () => {
+    const scenario = scenarioWith({
+      id: "occupied-rule",
+      description: "Require active operation for occupied rooms",
+      semantics: {
+        kind: "require-state-when-condition",
+        deviceIds: ["device"],
+        condition: {
+          type: "room-occupancy",
+          operator: "greater-than-or-equal",
+          value: 1,
+        },
+        stateId: "active",
+      },
+    }, 2);
+    const problem = createSolvableCspProblem(scenario);
+    expect(problem.constraints[0].evaluate({ device: "off" }).status).toBe("violated");
+    expect(problem.constraints[0].evaluate({ device: "active" }).status).toBe("satisfied");
+  });
+
+  it("does not count environment-only multi-device rules as variable relationships", () => {
+    const devices = ["ac", "light", "fan"].map((id) => ({
+      id,
+      type: id,
+      ratedPower: 2,
+      operatingTime: 1,
+      availableStates: [
+        { id: "off", effectivePower: 0 },
+        { id: "active", effectivePower: 2 },
+      ],
+    }));
+    const scenario: Scenario = {
+      id: "environment-only",
+      name: "Environment-only rules",
+      context: { temperature: 31 },
+      building: {
+        id: "building",
+        name: "Building",
+        type: "generic",
+        rooms: [{ id: "room", name: "Room", occupancy: 4, devices }],
+      },
+      constraints: [
+        {
+          id: "occupancy-rule",
+          description: "Occupancy condition on independently targeted devices",
+          semantics: {
+            kind: "forbid-states-when-condition",
+            deviceIds: ["ac", "light"],
+            condition: {
+              type: "room-occupancy",
+              operator: "greater-than-or-equal",
+              value: 4,
+            },
+            stateIds: ["off"],
+          },
+        },
+        {
+          id: "temperature-rule",
+          description: "Temperature condition",
+          semantics: {
+            kind: "require-state-when-condition",
+            deviceIds: ["ac"],
+            condition: {
+              type: "scenario-number",
+              property: "temperature",
+              operator: "greater-than-or-equal",
+              value: 30,
+            },
+            stateId: "active",
+          },
+        },
+      ],
+      objectiveConfiguration: { objectiveId: "minimise-energy" },
+    };
+    const problem = createSolvableCspProblem(scenario);
+    const selected = selectVariableWithDetails(
+      ["light", "fan", "ac"],
+      problem.domains,
+      problem.constraints,
+    );
+
+    expect(problem.constraints.map((item) => item.constraint.degreeRelevant)).toEqual([
+      false,
+      false,
+    ]);
+    expect(selected?.degreeTieBreakUsed).toBe(false);
+    expect(selected?.mrvTie?.candidates.map(({ variable, degree }) => [variable, degree])).toEqual([
+      ["light", 0],
+      ["fan", 0],
+      ["ac", 0],
+    ]);
+  });
+
+  it("adapts a device-state rule into an actual binary variable relationship", () => {
+    const base = scenarioWith(forbidActive);
+    const ac = base.building.rooms[0].devices[0];
+    const light = {
+      ...ac,
+      id: "light",
+      type: "lighting",
+      availableStates: [
+        { id: "off", effectivePower: 0 },
+        { id: "on", effectivePower: 2 },
+      ],
+    };
+    const scenario: Scenario = {
+      ...base,
+      building: {
+        ...base.building,
+        rooms: [{ ...base.building.rooms[0], devices: [ac, light] }],
+      },
+      constraints: [{
+        id: "ac-light-link",
+        description: "High cooling prevents lighting being On",
+        semantics: {
+          kind: "forbid-state-when-device-state",
+          conditionDeviceId: "device",
+          conditionStateId: "active",
+          targetDeviceId: "light",
+          forbiddenStateId: "on",
+        },
+      }],
+    };
+    const problem = createSolvableCspProblem(scenario);
+    const constraint = problem.constraints[0];
+
+    expect(constraint.constraint.involvedVariables).toEqual(["device", "light"]);
+    expect(constraint.constraint.degreeRelevant).toBeUndefined();
+    expect(constraint.evaluate({ device: "active", light: "on" }).status).toBe("violated");
+    expect(constraint.evaluate({ device: "active", light: "off" }).status).toBe("satisfied");
+    expect(constraint.evaluate({ device: "active" }).status).toBe("undecided");
+    expect(constraint.evaluate({ device: "off" }).status).toBe("satisfied");
   });
 
   it("does not mutate the scenario while creating or evaluating constraints", () => {

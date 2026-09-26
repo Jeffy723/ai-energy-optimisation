@@ -36,6 +36,16 @@ identify target device IDs, an occupancy value, and either forbidden state IDs
 or a required state ID. Constraints with unsupported or missing semantics must
 be rejected by the adapter rather than treated as automatically satisfied.
 
+Conditional state rules can also use a structured condition over room
+occupancy, scenario temperature, scenario light intensity, or scenario
+time-of-day. Numeric conditions support equality and ordered comparisons;
+time-of-day supports exact text equality. A condition is evaluated against
+each targeted device's room occupancy or against the scenario context before
+the selected-state rule is applied. If a referenced scenario context value is
+missing or has the wrong type, adaptation fails explicitly. These conditions
+are CSP rules, not energy-calculation inputs: energy remains based on the
+selected state power and operating duration.
+
 <code>ratedPower</code> is expressed consistently in kW when used for energy calculation, and <code>operatingTime</code> in hours. Demonstration scenarios may be classified as <code>small</code>, <code>medium</code>, or <code>large</code> by problem size without changing this contract.
 
 <code>availableStates</code> represents the possible operating states of a device and may become the domain of its corresponding CSP variable. For example only, a device may have <code>[state A, state B, state C]</code>; these labels are illustrative and are not fixed states.

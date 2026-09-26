@@ -134,7 +134,19 @@ export function describeCspEvent(event: CspExecutionEvent, maps: NameMaps): stri
   switch (event.type) {
     case "VARIABLE_SELECTED": {
       const indicators = [`MRV → ${event.remainingValues} remaining value(s)`];
-      if (event.degreeTieBreakUsed) indicators.push("Degree heuristic → tie-break");
+      if (event.mrvTie !== undefined) {
+        const tied = event.mrvTie.candidates
+          .map((candidate) => `${deviceLabel(maps, candidate.variable)} (${candidate.remainingValues})`)
+          .join(", ");
+        const degrees = event.mrvTie.candidates
+          .map((candidate) => `${deviceLabel(maps, candidate.variable)}=${candidate.degree}`)
+          .join(", ");
+        indicators.push(`MRV tie → ${tied}`);
+        indicators.push(`Degree → ${degrees}`);
+        indicators.push(event.degreeTieBreakUsed
+          ? `Degree selected ${deviceLabel(maps, event.variable)}`
+          : "Degree scores tied; kept input order");
+      }
       if (event.lcvOrder !== undefined) {
         indicators.push(
           `LCV order → ${event.lcvOrder.map((value) => stateLabel(maps, event.variable, value)).join(" → ")}`,

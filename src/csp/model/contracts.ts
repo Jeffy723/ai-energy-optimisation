@@ -36,6 +36,8 @@ export interface ConstraintEvaluationResult {
 export interface CspConstraint {
   readonly id: Identifier;
   readonly involvedVariables: readonly CspVariableId[];
+  /** False for multi-target rules that are independent unary conditions. */
+  readonly degreeRelevant?: boolean;
   readonly description: string;
   readonly evaluationSemantics: string;
   readonly evaluationInputs: readonly string[];

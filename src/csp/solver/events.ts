@@ -27,6 +27,7 @@ import type {
   ValueTriedEvent,
   VariableSelectedEvent,
 } from "../../visualisation/events/contracts.js";
+import type { VariableSelection } from "../heuristics/variableOrdering.js";
 
 /**
  * Mutable collector used by the solver to record events during search.
@@ -58,8 +59,7 @@ export class EventCollector {
     variable: CspVariableId,
     depth: number,
     assignment: CspConfiguration,
-    remainingValues: number,
-    degreeTieBreakUsed: boolean,
+    selection: VariableSelection,
     lcvOrder?: readonly CspValue[],
   ): void {
     const event: VariableSelectedEvent = {
@@ -69,10 +69,13 @@ export class EventCollector {
       depth,
       variable,
       assignment: this.snap(assignment),
-      remainingValues,
-      degreeTieBreakUsed,
+      remainingValues: selection.remainingValues,
+      degreeTieBreakUsed: selection.degreeTieBreakUsed,
+      ...(selection.mrvTie === undefined ? {} : { mrvTie: selection.mrvTie }),
       ...(lcvOrder === undefined ? {} : { lcvOrder: [...lcvOrder] }),
-      reason: `MRV selected ${variable} with ${remainingValues} remaining value(s)`,
+      reason: selection.degreeTieBreakUsed
+        ? `MRV tied; Degree selected ${variable}: ${selection.mrvTie?.reason ?? "highest degree"}`
+        : `MRV selected ${variable} with ${selection.remainingValues} remaining value(s)`,
     };
     this._events.push(event);
   }

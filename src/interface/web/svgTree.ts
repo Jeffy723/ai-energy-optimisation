@@ -3,7 +3,7 @@ import type { NameMaps } from "./presentation.js";
 import { deviceLabel, formatAssignment, stateLabel } from "./presentation.js";
 
 const NODE_WIDTH = 214;
-const NODE_HEIGHT = 168;
+const NODE_HEIGHT = 194;
 const SIBLING_GAP = 36;
 const LEVEL_GAP = 72;
 
@@ -187,7 +187,25 @@ function detailLines(node: SearchTreeNode, maps?: NameMaps): string[] {
     return detail.length === 0 ? [] : [detail];
   }
   const lines = [`MRV · ${node.remainingValues ?? 0} remaining value(s)`];
-  if (node.degreeTieBreakUsed) lines.push("Degree heuristic · tie-break");
+  if (node.mrvTie !== undefined) {
+    const tied = node.mrvTie.candidates
+      .map((candidate) => {
+        const variable = maps ? deviceLabel(maps, candidate.variable) : candidate.variable;
+        return `${variable} (${candidate.remainingValues})`;
+      })
+      .join(", ");
+    const degrees = node.mrvTie.candidates
+      .map((candidate) => {
+        const variable = maps ? deviceLabel(maps, candidate.variable) : candidate.variable;
+        return `${variable}=${candidate.degree}`;
+      })
+      .join(", ");
+    lines.push(`MRV tie · ${tied}`);
+    lines.push(`Degree · ${degrees}`);
+    lines.push(node.degreeTieBreakUsed
+      ? `Degree selected ${maps ? deviceLabel(maps, node.variable ?? "") : node.variable}`
+      : "Degree tied · kept input order");
+  }
   if (node.lcvOrder !== undefined) {
     const ordered = node.lcvOrder.map((value) =>
       maps ? stateLabel(maps, node.variable ?? "", value) : String(value),
@@ -207,7 +225,7 @@ function detailLines(node: SearchTreeNode, maps?: NameMaps): string[] {
   return lines;
 }
 
-function wrapLabel(text: string, max = 28): string {
+function wrapLabel(text: string, max = 42): string {
   if (text.length <= max) return text;
   return `${text.slice(0, max - 1)}…`;
 }
@@ -250,7 +268,7 @@ function drawNodes(node: LayoutNode, maps?: NameMaps): string {
     <text x="${NODE_WIDTH / 2}" y="50" text-anchor="middle" font-size="11" fill="#344054">${escapeHtml(assignment)}</text>
     <text x="${NODE_WIDTH / 2}" y="76" text-anchor="middle" font-size="12" font-weight="700" fill="${style.stroke}">${escapeHtml(style.badge)} ${escapeHtml(style.label)}</text>
   `;
-  details.slice(0, 5).forEach((detail, index) => {
+  details.slice(0, 7).forEach((detail, index) => {
     svg += `<text x="${NODE_WIDTH / 2}" y="${98 + index * 13}" text-anchor="middle" font-size="9" fill="#475467">${escapeHtml(wrapLabel(detail, 34))}</text>`;
   });
   svg += "</g>";

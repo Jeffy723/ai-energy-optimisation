@@ -1,4 +1,13 @@
-import type { ScenarioConstraintSemantics } from "../../problem/scenario/contracts.js";
+import type {
+  NumericConditionOperator,
+  ScenarioConstraintSemantics,
+} from "../../problem/scenario/contracts.js";
+
+export type ConstraintConditionField =
+  | "room-occupancy"
+  | "temperature"
+  | "lightIntensity"
+  | "timeOfDay";
 
 export interface StateDraft {
   id: string;
@@ -29,6 +38,11 @@ export interface ConstraintDraft {
   occupancy: string;
   stateIds: string[];
   stateId: string;
+  conditionField?: ConstraintConditionField;
+  conditionOperator?: NumericConditionOperator;
+  conditionValue?: string;
+  conditionDeviceId?: string;
+  conditionStateId?: string;
 }
 
 export interface ScenarioFormState {

@@ -25,6 +25,15 @@ export interface VariableSelectedEvent extends CspEventBase {
   readonly variable: CspVariableId;
   readonly remainingValues: number;
   readonly degreeTieBreakUsed: boolean;
+  readonly mrvTie?: {
+    readonly candidates: readonly {
+      readonly variable: CspVariableId;
+      readonly remainingValues: number;
+      readonly degree: number;
+    }[];
+    readonly selectedVariable?: CspVariableId;
+    readonly reason: string;
+  };
   readonly lcvOrder?: readonly CspValue[];
 }
 

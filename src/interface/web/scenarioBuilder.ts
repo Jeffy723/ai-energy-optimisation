@@ -2,9 +2,10 @@ import type {
   Device,
   Scenario,
   ScenarioConstraint,
+  ScenarioConstraintCondition,
   ScenarioConstraintSemantics,
 } from "../../problem/scenario/contracts.js";
-import type { ConstraintDraft, DeviceDraft, RoomDraft, StateDraft } from "./contracts.js";
+import type { ConstraintConditionField, ConstraintDraft, DeviceDraft, RoomDraft, StateDraft } from "./contracts.js";
 
 function numberValue(value: string, label: string): number {
   if (value.trim() === "") throw new Error(`${label.toLowerCase()} is required`);
@@ -68,37 +69,126 @@ function deviceFromDraft(draft: DeviceDraft): Device {
 function semanticsFromDraft(
   draft: ConstraintDraft,
   availableStateIds: ReadonlySet<string>,
+  stateIdsByDevice: ReadonlyMap<string, ReadonlySet<string>>,
 ): ScenarioConstraintSemantics {
+  if (draft.kind === "forbid-state-when-device-state") {
+    const targetDeviceIds = draft.deviceIds.filter((id) => id.trim().length > 0);
+    if (targetDeviceIds.length !== 1) {
+      throw new Error("A device-to-device constraint must target exactly one device");
+    }
+    const conditionDeviceId = draft.conditionDeviceId?.trim() ?? "";
+    if (conditionDeviceId.length === 0 || !stateIdsByDevice.has(conditionDeviceId)) {
+      throw new Error("Choose a valid condition device");
+    }
+    if (conditionDeviceId === targetDeviceIds[0]) {
+      throw new Error("A device-to-device constraint must relate two different devices");
+    }
+    const conditionStateId = draft.conditionStateId?.trim() ?? "";
+    if (!stateIdsByDevice.get(conditionDeviceId)?.has(conditionStateId)) {
+      throw new Error("Choose a condition state available on its device");
+    }
+    const forbiddenStates = validateForbiddenStates(draft, availableStateIds);
+    if (forbiddenStates.length !== 1) {
+      throw new Error("A device-to-device constraint must forbid exactly one target state");
+    }
+    return {
+      kind: "forbid-state-when-device-state",
+      conditionDeviceId,
+      conditionStateId,
+      targetDeviceId: targetDeviceIds[0],
+      forbiddenStateId: forbiddenStates[0],
+    };
+  }
   const deviceIds = draft.deviceIds.filter((id) => id.trim().length > 0);
   if (deviceIds.length === 0) {
     throw new Error("Each constraint must target at least one device");
   }
-  const occupancy = occupancyValue(draft.occupancy, "Constraint occupancy");
-  if (draft.kind === "forbid-states-when-room-occupancy") {
-    const stateIds = draft.stateIds.filter((id) => id.trim().length > 0);
-    if (stateIds.length === 0) {
-      throw new Error("Choose at least one forbidden state");
+  const forbid = draft.kind.startsWith("forbid-");
+  const conditionField: ConstraintConditionField = draft.conditionField ?? "room-occupancy";
+  const conditionValue = draft.conditionValue ?? draft.occupancy;
+  const operator = draft.conditionOperator ?? "equals";
+  const condition: ScenarioConstraintCondition = conditionField === "room-occupancy"
+    ? {
+        type: "room-occupancy",
+        operator,
+        value: occupancyValue(conditionValue, "Constraint occupancy"),
+      }
+    : conditionField === "temperature" || conditionField === "lightIntensity"
+      ? {
+          type: "scenario-number",
+          property: conditionField,
+          operator,
+          value: conditionField === "lightIntensity"
+            ? nonNegative(conditionValue, "Constraint light intensity")
+            : numberValue(conditionValue, "Constraint temperature"),
+        }
+      : {
+          type: "scenario-text",
+          property: "timeOfDay",
+          operator: "equals",
+          value: requiredText(conditionValue, "Constraint time of day"),
+        };
+  if (condition.type === "room-occupancy" && operator === "equals") {
+    const occupancy = condition.value;
+    if (forbid) {
+      const stateIds = validateForbiddenStates(draft, availableStateIds);
+      return { kind: "forbid-states-when-room-occupancy", deviceIds, occupancy, stateIds };
     }
-    if (stateIds.some((stateId) => !availableStateIds.has(stateId))) {
-      throw new Error(`Constraint "${draft.id}" references a state that is not available on its selected devices`);
-    }
-    return { kind: draft.kind, deviceIds, occupancy, stateIds };
+    const stateId = validateRequiredState(draft, availableStateIds);
+    return { kind: "require-state-when-room-occupancy", deviceIds, occupancy, stateId };
   }
+  if (forbid) {
+    const stateIds = validateForbiddenStates(draft, availableStateIds);
+    return { kind: "forbid-states-when-condition", deviceIds, condition, stateIds };
+  }
+  return {
+    kind: "require-state-when-condition",
+    deviceIds,
+    condition,
+    stateId: validateRequiredState(draft, availableStateIds),
+  };
+}
+
+function validateForbiddenStates(
+  draft: ConstraintDraft,
+  availableStateIds: ReadonlySet<string>,
+): string[] {
+  const stateIds = draft.stateIds.filter((id) => id.trim().length > 0);
+  if (stateIds.length === 0) throw new Error("Choose at least one forbidden state");
+  if (stateIds.some((stateId) => !availableStateIds.has(stateId))) {
+    throw new Error(`Constraint "${draft.id}" references a state that is not available on its selected devices`);
+  }
+  return stateIds;
+}
+
+function validateRequiredState(
+  draft: ConstraintDraft,
+  availableStateIds: ReadonlySet<string>,
+): string {
   const stateId = draft.stateId.trim();
   if (stateId.length === 0) throw new Error("Choose the required state");
   if (!availableStateIds.has(stateId)) {
     throw new Error(`Constraint "${draft.id}" references a state that is not available on its selected devices`);
   }
-  return { kind: draft.kind, deviceIds, occupancy, stateId };
+  return stateId;
 }
 
 function constraintDescription(draft: ConstraintDraft): string {
   const written = draft.description.trim();
   if (written.length > 0) return written;
-  if (draft.kind === "forbid-states-when-room-occupancy") {
-    return `When occupancy is ${draft.occupancy}, the selected devices must not use the forbidden states.`;
+  if (draft.kind === "forbid-state-when-device-state") {
+    return `When the condition device is in the selected state, the target device cannot use the forbidden state.`;
   }
-  return `When occupancy is ${draft.occupancy}, the selected devices must use the required state.`;
+  const action = draft.kind.startsWith("forbid-")
+    ? "must not use the forbidden states"
+    : "must use the required state";
+  const fieldName = {
+    "room-occupancy": "occupancy",
+    temperature: "temperature",
+    lightIntensity: "light intensity",
+    timeOfDay: "time of day",
+  }[draft.conditionField ?? "room-occupancy"];
+  return `When ${fieldName} ${draft.conditionOperator ?? "equals"} ${draft.conditionValue ?? draft.occupancy}, the selected devices ${action}.`;
 }
 
 export function buildScenario(
@@ -119,6 +209,12 @@ export function buildScenario(
       throw new Error(`Room "${room.name || room.id}" must contain at least one device`);
     }
   }
+  const stateIdsByDevice = new Map(
+    rooms.flatMap((room) => room.devices.map((device) => [
+      device.id,
+      new Set(device.states.map((operatingState) => operatingState.id)),
+    ] as const)),
+  );
   const scenarioConstraints: ScenarioConstraint[] = constraints.map((draft) => {
     const availableStateIds = new Set(
       rooms
@@ -129,8 +225,19 @@ export function buildScenario(
     return {
       id: requiredText(draft.id, "Constraint identifier"),
       description: constraintDescription(draft),
-      evaluationInputs: ["room occupancy", "selected device state"],
-      semantics: semanticsFromDraft(draft, availableStateIds),
+      evaluationInputs: draft.kind === "forbid-state-when-device-state"
+        ? ["condition device state", "target device state"]
+        : [
+        draft.conditionField === "temperature"
+          ? "scenario temperature"
+          : draft.conditionField === "lightIntensity"
+            ? "scenario light intensity"
+            : draft.conditionField === "timeOfDay"
+              ? "scenario time of day"
+              : "room occupancy",
+        "selected device state",
+          ],
+      semantics: semanticsFromDraft(draft, availableStateIds, stateIdsByDevice),
     };
   });
   const name = scenarioName.trim() === "" ? "Browser scenario" : scenarioName.trim();

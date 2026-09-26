@@ -170,8 +170,7 @@ function backtrack(
     variable,
     depth,
     config,
-    selection.remainingValues,
-    selection.degreeTieBreakUsed,
+    selection,
     ordering.lcvApplied ? ordering.values : undefined,
   );
   if (!rawDomain || rawDomain.length === 0) {

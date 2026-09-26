@@ -79,6 +79,9 @@ const makeConstraint = (): ConstraintDraft => ({
   occupancy: "0",
   stateIds: [],
   stateId: "",
+  conditionField: "room-occupancy",
+  conditionOperator: "equals",
+  conditionValue: "0",
 });
 
 function escapeHtml(value: unknown): string {
@@ -164,22 +167,77 @@ function stateOptions(
 }
 
 function renderConstraint(item: ConstraintDraft): string {
-  const forbid = item.kind === "forbid-states-when-room-occupancy";
-  return `<article class="constraint" data-role="constraint" data-constraint-id="${escapeHtml(item.id)}">
-    <div class="grid">
-      <label>Rule
-        <select data-field="kind">
-          <option value="forbid-states-when-room-occupancy" ${forbid ? "selected" : ""}>Forbid selected states when occupancy equals</option>
-          <option value="require-state-when-room-occupancy" ${forbid ? "" : "selected"}>Require a state when occupancy equals</option>
+  const deviceRelation = item.kind === "forbid-state-when-device-state";
+  const forbid = item.kind.startsWith("forbid-");
+  const conditionField = item.conditionField ?? "room-occupancy";
+  const operator = item.conditionOperator ?? "equals";
+  const numericCondition = conditionField !== "timeOfDay";
+  const conditionLabel = {
+    "room-occupancy": "Room occupancy",
+    temperature: "Temperature (°C)",
+    lightIntensity: "Light intensity",
+    timeOfDay: "Time of day",
+  }[conditionField];
+  const operators = numericCondition
+    ? [
+        ["equals", "equals"],
+        ["greater-than", "greater than"],
+        ["greater-than-or-equal", "at least"],
+        ["less-than", "less than"],
+        ["less-than-or-equal", "at most"],
+      ] as const
+    : [["equals", "equals"]] as const;
+  const relationFields = deviceRelation
+    ? `<label>Condition device
+        <select data-field="conditionDeviceId">
+          <option value="">Select a device</option>${deviceOptions(item.conditionDeviceId ? [item.conditionDeviceId] : [])}
         </select>
       </label>
-      ${field("Occupancy value", item.occupancy, "occupancy", "number", 'min="0" step="1"')}
+      <label>Condition state
+        <select data-field="conditionStateId">
+          <option value="">Select a state</option>${stateOptions([], item.conditionStateId, item.conditionDeviceId ? [item.conditionDeviceId] : [])}
+        </select>
+      </label>
+      <label>Target device
+        <select data-field="deviceIds">
+          <option value="">Select a device</option>${deviceOptions(item.deviceIds.slice(0, 1))}
+        </select>
+      </label>
+      <label>Forbidden target state
+        <select data-field="stateIds">
+          <option value="">Select a state</option>${stateOptions(item.stateIds.slice(0, 1), undefined, item.deviceIds.slice(0, 1))}
+        </select>
+      </label>`
+    : `<label>Condition
+        <select data-field="conditionField">
+          <option value="room-occupancy" ${conditionField === "room-occupancy" ? "selected" : ""}>Room occupancy</option>
+          <option value="temperature" ${conditionField === "temperature" ? "selected" : ""}>Temperature</option>
+          <option value="lightIntensity" ${conditionField === "lightIntensity" ? "selected" : ""}>Light intensity</option>
+          <option value="timeOfDay" ${conditionField === "timeOfDay" ? "selected" : ""}>Time of day</option>
+        </select>
+      </label>
+      ${numericCondition
+        ? `<label>Comparison
+            <select data-field="conditionOperator">${operators.map(([value, label]) => `<option value="${value}" ${operator === value ? "selected" : ""}>${label}</option>`).join("")}</select>
+          </label>
+          ${field(`${conditionLabel} value`, item.conditionValue ?? item.occupancy, "conditionValue", "number", conditionField === "room-occupancy" ? 'min="0" step="1"' : conditionField === "lightIntensity" ? 'min="0" step="any"' : "step=\"any\"")}`
+        : field(conditionLabel, item.conditionValue ?? "", "conditionValue", "text")}
       <label>Devices
         <select multiple data-field="deviceIds">${deviceOptions(item.deviceIds)}</select>
       </label>
       ${forbid
         ? `<label>Forbidden states<select multiple data-field="stateIds">${stateOptions(item.stateIds, undefined, item.deviceIds)}</select></label>`
-        : `<label>Required state<select data-field="stateId"><option value="">Select a state</option>${stateOptions([], item.stateId, item.deviceIds)}</select></label>`}
+        : `<label>Required state<select data-field="stateId"><option value="">Select a state</option>${stateOptions([], item.stateId, item.deviceIds)}</select></label>`}`;
+  return `<article class="constraint" data-role="constraint" data-constraint-id="${escapeHtml(item.id)}">
+    <div class="grid">
+      <label>Rule
+        <select data-field="kind">
+          <option value="forbid-states-when-room-occupancy" ${forbid && !deviceRelation ? "selected" : ""}>Forbid selected states when condition matches</option>
+          <option value="require-state-when-room-occupancy" ${item.kind === "require-state-when-room-occupancy" || item.kind === "require-state-when-condition" ? "selected" : ""}>Require a state when condition matches</option>
+          <option value="forbid-state-when-device-state" ${deviceRelation ? "selected" : ""}>Forbid a target state when another device is in a state</option>
+        </select>
+      </label>
+      ${relationFields}
     </div>
     <label>Explanation (optional)
       <input data-field="description" type="text" value="${escapeHtml(item.description)}" placeholder="Shown in the search explanation">
@@ -254,7 +312,7 @@ function render(): void {
     <div id="message" aria-live="polite"></div>
     <section class="block">
       <h2>Environment</h2>
-      <p class="lede">These values are stored as scenario context. Occupancy constraints use room occupancy. Energy itself is calculated only from selected state power and operating hours.</p>
+      <p class="lede">These values are scenario context and can be used by CSP conditions. Energy itself is calculated only from selected state power and operating hours.</p>
       <div class="grid">
         ${field("Temperature (°C)", state.temperature, "temperature", "number", 'step="0.1"')}
         ${field("Time of day", state.timeOfDay, "time-of-day")}
@@ -271,7 +329,7 @@ function render(): void {
     </section>
     <section class="block">
       <h2>Constraints</h2>
-      <p class="lede">Each rule is evaluated by the CSP solver. Occupancy is an exact match: the rule applies when a device’s room occupancy equals the value below.</p>
+      <p class="lede">Each rule is evaluated by the CSP solver using room occupancy or the supplied scenario environment value. Numeric conditions support comparisons; time of day uses an exact match.</p>
       <div id="constraints">${state.constraints.length === 0
         ? '<p class="empty-builder">No constraints yet. Add at least one structured rule before running.</p>'
         : state.constraints.map(renderConstraint).join("")}</div>
@@ -348,9 +406,16 @@ function readForm(): void {
     const values = readScopedFields(constraintEl, "[data-field]");
     if (typeof values.kind === "string") constraint.kind = values.kind as ConstraintDraft["kind"];
     if (typeof values.occupancy === "string") constraint.occupancy = values.occupancy;
+    if (typeof values.conditionField === "string") constraint.conditionField = values.conditionField as ConstraintDraft["conditionField"];
+    if (typeof values.conditionOperator === "string") constraint.conditionOperator = values.conditionOperator as ConstraintDraft["conditionOperator"];
+    if (typeof values.conditionValue === "string") constraint.conditionValue = values.conditionValue;
     if (Array.isArray(values.deviceIds)) constraint.deviceIds = values.deviceIds;
+    else if (typeof values.deviceIds === "string") constraint.deviceIds = values.deviceIds ? [values.deviceIds] : [];
     if (Array.isArray(values.stateIds)) constraint.stateIds = values.stateIds;
+    else if (typeof values.stateIds === "string") constraint.stateIds = values.stateIds ? [values.stateIds] : [];
     if (typeof values.stateId === "string") constraint.stateId = values.stateId;
+    if (typeof values.conditionDeviceId === "string") constraint.conditionDeviceId = values.conditionDeviceId;
+    if (typeof values.conditionStateId === "string") constraint.conditionStateId = values.conditionStateId;
     if (typeof values.description === "string") constraint.description = values.description;
 
     const validStateIds = new Set(
@@ -362,6 +427,15 @@ function readForm(): void {
     constraint.stateIds = constraint.stateIds.filter((stateId) => validStateIds.has(stateId));
     if (constraint.stateId !== "" && !validStateIds.has(constraint.stateId)) {
       constraint.stateId = "";
+    }
+    if (constraint.conditionStateId !== undefined) {
+      const conditionStateIds = new Set(
+        state.rooms
+          .flatMap((room) => room.devices)
+          .find((device) => device.id === constraint.conditionDeviceId)
+          ?.states.map((operatingState) => operatingState.id) ?? [],
+      );
+      if (!conditionStateIds.has(constraint.conditionStateId)) constraint.conditionStateId = "";
     }
   });
 }
@@ -382,6 +456,14 @@ function handleConstraintRuleChange(select: HTMLSelectElement): void {
   if (constraint === undefined) return;
 
   constraint.kind = select.value as ConstraintDraft["kind"];
+  readForm();
+  render();
+}
+
+function handleConstraintConditionChange(select: HTMLSelectElement): void {
+  const constraintElement = select.closest<HTMLElement>('[data-role="constraint"]');
+  const constraint = state.constraints.find((item) => item.id === constraintElement?.dataset.constraintId);
+  if (constraint === undefined) return;
   readForm();
   render();
 }
@@ -610,6 +692,14 @@ app.addEventListener("change", (event) => {
     return;
   }
   if (target.dataset.field === "deviceIds") {
+    handleConstraintDeviceChange(target);
+    return;
+  }
+  if (target.dataset.field === "conditionField") {
+    handleConstraintConditionChange(target);
+    return;
+  }
+  if (target.dataset.field === "conditionDeviceId") {
     handleConstraintDeviceChange(target);
   }
 });

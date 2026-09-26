@@ -12,6 +12,7 @@ interface MutableNode {
   value?: import("../../csp/model/contracts.js").CspValue;
   remainingValues?: number;
   degreeTieBreakUsed?: boolean;
+  mrvTie?: SearchTreeNode["mrvTie"];
   lcvOrder?: readonly import("../../csp/model/contracts.js").CspValue[];
   constraint?: import("../../csp/model/contracts.js").ConstraintEvaluationResult;
   pruningKind?: "forward-checking" | "constraint-propagation";
@@ -32,6 +33,12 @@ function copyNode(node: MutableNode): SearchTreeNode {
     ...(node.value === undefined ? {} : { value: node.value }),
     ...(node.remainingValues === undefined ? {} : { remainingValues: node.remainingValues }),
     ...(node.degreeTieBreakUsed === undefined ? {} : { degreeTieBreakUsed: node.degreeTieBreakUsed }),
+    ...(node.mrvTie === undefined ? {} : {
+      mrvTie: {
+        ...node.mrvTie,
+        candidates: node.mrvTie.candidates.map((candidate) => ({ ...candidate })),
+      },
+    }),
     ...(node.lcvOrder === undefined ? {} : { lcvOrder: [...node.lcvOrder] }),
     ...(node.constraint === undefined ? {} : { constraint: { ...node.constraint, assignment: { ...node.constraint.assignment } } }),
     ...(node.pruningKind === undefined ? {} : { pruningKind: node.pruningKind }),
@@ -89,6 +96,12 @@ export function buildSearchTree(events: readonly CspExecutionEvent[]): SearchTre
         ? {
             remainingValues: event.remainingValues,
             degreeTieBreakUsed: event.degreeTieBreakUsed,
+            ...(event.mrvTie === undefined ? {} : {
+              mrvTie: {
+                ...event.mrvTie,
+                candidates: event.mrvTie.candidates.map((candidate) => ({ ...candidate })),
+              },
+            }),
             ...(event.lcvOrder === undefined ? {} : { lcvOrder: [...event.lcvOrder] }),
           }
         : {}),

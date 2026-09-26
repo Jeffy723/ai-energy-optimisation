@@ -64,6 +64,115 @@ describe("browser scenario builder", () => {
     });
   });
 
+  it("builds executable temperature and light-intensity constraints from form input", () => {
+    const scenario = buildScenario(
+      "Environment rules",
+      "generic",
+      "28",
+      "evening",
+      "120",
+      [{
+        id: "room-a",
+        name: "Room A",
+        occupancy: "3",
+        devices: [device("device-a")],
+      }],
+      [
+        {
+          ...constraint("hot-rule"),
+          deviceIds: ["device-a"],
+          stateIds: ["device-a-state-2"],
+          conditionField: "temperature",
+          conditionOperator: "greater-than-or-equal",
+          conditionValue: "26",
+        },
+        {
+          ...constraint("dark-rule"),
+          deviceIds: ["device-a"],
+          stateIds: ["device-a-state-2"],
+          conditionField: "lightIntensity",
+          conditionOperator: "less-than",
+          conditionValue: "180",
+        },
+        {
+          ...constraint("time-rule"),
+          deviceIds: ["device-a"],
+          stateIds: ["device-a-state-2"],
+          conditionField: "timeOfDay",
+          conditionValue: "evening",
+        },
+      ],
+    );
+
+    expect(scenario.constraints.map((item) => item.semantics)).toEqual([
+      {
+        kind: "forbid-states-when-condition",
+        deviceIds: ["device-a"],
+        condition: {
+          type: "scenario-number",
+          property: "temperature",
+          operator: "greater-than-or-equal",
+          value: 26,
+        },
+        stateIds: ["device-a-state-2"],
+      },
+      {
+        kind: "forbid-states-when-condition",
+        deviceIds: ["device-a"],
+        condition: {
+          type: "scenario-number",
+          property: "lightIntensity",
+          operator: "less-than",
+          value: 180,
+        },
+        stateIds: ["device-a-state-2"],
+      },
+      {
+        kind: "forbid-states-when-condition",
+        deviceIds: ["device-a"],
+        condition: {
+          type: "scenario-text",
+          property: "timeOfDay",
+          operator: "equals",
+          value: "evening",
+        },
+        stateIds: ["device-a-state-2"],
+      },
+    ]);
+  });
+
+  it("builds a real device-to-device state relationship", () => {
+    const scenario = buildScenario(
+      "Linked devices",
+      "generic",
+      "",
+      "",
+      "",
+      [{
+        id: "room-a",
+        name: "Room A",
+        occupancy: "2",
+        devices: [device("ac"), device("light")],
+      }],
+      [{
+        ...constraint("ac-light-link"),
+        kind: "forbid-state-when-device-state",
+        deviceIds: ["light"],
+        stateIds: ["light-state-2"],
+        conditionDeviceId: "ac",
+        conditionStateId: "ac-state-2",
+      }],
+    );
+
+    expect(scenario.constraints[0].semantics).toEqual({
+      kind: "forbid-state-when-device-state",
+      conditionDeviceId: "ac",
+      conditionStateId: "ac-state-2",
+      targetDeviceId: "light",
+      forbiddenStateId: "light-state-2",
+    });
+  });
+
   it("rejects a builder with no rooms or non-numeric values", () => {
     expect(() => buildScenario("x", "generic", "", "", "", [], [])).toThrow(/room/);
     expect(() => buildScenario("x", "generic", "", "", "", [{

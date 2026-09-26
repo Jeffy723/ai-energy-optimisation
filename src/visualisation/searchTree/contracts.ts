@@ -16,6 +16,15 @@ export interface SearchTreeNode {
   readonly value?: CspValue;
   readonly remainingValues?: number;
   readonly degreeTieBreakUsed?: boolean;
+  readonly mrvTie?: {
+    readonly candidates: readonly {
+      readonly variable: string;
+      readonly remainingValues: number;
+      readonly degree: number;
+    }[];
+    readonly selectedVariable?: string;
+    readonly reason: string;
+  };
   readonly lcvOrder?: readonly CspValue[];
   readonly constraint?: ConstraintEvaluationResult;
   readonly pruningKind?: "forward-checking" | "constraint-propagation";
