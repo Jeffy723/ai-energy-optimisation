@@ -269,7 +269,7 @@ function drawNodes(node: LayoutNode, maps?: NameMaps): string {
     <text x="${NODE_WIDTH / 2}" y="76" text-anchor="middle" font-size="12" font-weight="700" fill="${style.stroke}">${escapeHtml(style.badge)} ${escapeHtml(style.label)}</text>
   `;
   details.slice(0, 7).forEach((detail, index) => {
-    svg += `<text x="${NODE_WIDTH / 2}" y="${98 + index * 13}" text-anchor="middle" font-size="9" fill="#475467">${escapeHtml(wrapLabel(detail, 34))}</text>`;
+    svg += `<text x="${NODE_WIDTH / 2}" y="${98 + index * 13}" text-anchor="middle" font-size="9" fill="#475467">${escapeHtml(wrapLabel(detail, 48))}</text>`;
   });
   svg += "</g>";
   for (const child of node.children) svg += drawNodes(child, maps);

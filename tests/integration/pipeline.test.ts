@@ -127,6 +127,33 @@ describe("integrated AI pipeline", () => {
     expect(first.output.scenario.buildingType).toBe("unclassified-input");
   });
 
+  it("recalculates energy savings when scenario values change between runs", () => {
+    const firstScenario = makeScenario();
+    const secondScenario: Scenario = {
+      ...makeScenario(),
+      building: {
+        ...makeScenario().building,
+        rooms: makeScenario().building.rooms.map((room) => ({
+          ...room,
+          devices: room.devices.map((device) => ({
+            ...device,
+            availableStates: device.availableStates.map((state) =>
+              state.id === "low" ? { ...state, effectivePower: 2 } : state,
+            ),
+          })),
+        })),
+      },
+    };
+    const first = runPipeline(firstScenario, problem(), objective);
+    const second = runPipeline(secondScenario, problem(), objective);
+
+    expect(first.status).toBe("completed");
+    expect(second.status).toBe("completed");
+    if (first.status !== "completed" || second.status !== "completed") return;
+    expect(first.output.energy.comparison.percentageSaved).toBe(75);
+    expect(second.output.energy.comparison.percentageSaved).toBe(50);
+  });
+
   it("rejects invalid scenario input before invoking the solver", () => {
     const invalid = { ...makeScenario(), building: { ...makeScenario().building, rooms: [] } };
     expect(() => runPipeline(invalid, problem(), objective)).toThrow("Invalid scenario");

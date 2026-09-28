@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { CspConfiguration, CspValue } from "../../src/csp/model/contracts.js";
 import type { SolvableConstraint } from "../../src/csp/model/evaluation.js";
 import { selectVariableWithDetails } from "../../src/csp/heuristics/variableOrdering.js";
+import { orderValues } from "../../src/csp/heuristics/valueOrdering.js";
 import { solve } from "../../src/csp/solver/engine.js";
 
 function linkedConstraint(id: string, ...variables: string[]): SolvableConstraint {
@@ -104,6 +105,53 @@ describe("MRV and Degree variable ordering", () => {
       { variable: "C", remainingValues: 2, degree: 1 },
       { variable: "A", remainingValues: 2, degree: 2 },
     ]);
+  });
+
+  it("counts distinct neighbours in n-ary constraints", () => {
+    const selected = select(
+      ["B", "C", "D", "E", "A"],
+      [
+        linkedConstraint("abc", "A", "B", "C"),
+        linkedConstraint("ade", "A", "D", "E"),
+      ],
+      Object.fromEntries(["A", "B", "C", "D", "E"].map((id) => [id, ["one", "two"]])),
+    );
+
+    expect(selected?.variable).toBe("A");
+    expect(selected?.mrvTie?.candidates.find((candidate) => candidate.variable === "A")?.degree).toBe(4);
+  });
+
+  it("uses n-ary support when ordering values with LCV", () => {
+    const variables = ["A", "B", "C"];
+    const domains = new Map<string, CspValue[]>([
+      ["A", ["red", "blue"]],
+      ["B", ["red"]],
+      ["C", ["red"]],
+    ]);
+    const constraint: SolvableConstraint = {
+      constraint: {
+        id: "not-all-red",
+        involvedVariables: variables,
+        description: "At least one variable must not be red",
+        evaluationSemantics: "n-ary",
+        evaluationInputs: variables,
+        evaluationResult: { status: "undecided" },
+      },
+      evaluate: (assignment) => {
+        if (variables.some((id) => assignment[id] === undefined)) {
+          return { constraintId: "not-all-red", status: "undecided", assignment };
+        }
+        const violated = variables.every((id) => assignment[id] === "red");
+        return {
+          constraintId: "not-all-red",
+          status: violated ? "violated" : "satisfied",
+          assignment,
+        };
+      },
+    };
+
+    expect(orderValues("A", ["red", "blue"], {}, ["B", "C"], domains, [constraint]))
+      .toEqual(["blue", "red"]);
   });
 
   it("records tie scores in the solver event and selects the actual highest-degree variable", () => {

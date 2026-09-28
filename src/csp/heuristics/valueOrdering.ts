@@ -71,6 +71,7 @@ export function orderValuesWithDetails(
   // Find constraints that involve `variable` and at least one unassigned neighbour.
   const relevantConstraints: SolvableConstraint[] = [];
   for (const sc of constraints) {
+    if (sc.constraint.degreeRelevant === false) continue;
     const vars = sc.constraint.involvedVariables;
     if (!vars.includes(variable)) continue;
     // Is at least one other involved variable unassigned?
@@ -139,15 +140,34 @@ function countRuledOut(
         ...tentative,
         [neighbour]: nv,
       };
-      for (const sc of shared) {
-        const result = sc.evaluate(testAssignment);
-        if (result.status === "violated") {
-          ruledOut++;
-          break; // this neighbour-value is ruled out; don't double-count
-        }
-      }
+      if (shared.some((sc) => !hasSupport(sc, testAssignment, domains))) ruledOut++;
     }
   }
 
   return ruledOut;
+}
+
+/** Check n-ary constraints against combinations of the other current domains. */
+function hasSupport(
+  constraint: SolvableConstraint,
+  partial: CspConfiguration,
+  domains: ReadonlyMap<CspVariableId, readonly CspValue[]>,
+): boolean {
+  const remaining = constraint.constraint.involvedVariables.filter(
+    (candidate) => !Object.prototype.hasOwnProperty.call(partial, candidate),
+  );
+
+  const search = (index: number, assignment: CspConfiguration): boolean => {
+    if (index === remaining.length) {
+      return constraint.evaluate(assignment).status !== "violated";
+    }
+    const candidate = remaining[index];
+    const domain = domains.get(candidate) ?? [];
+    for (const value of domain) {
+      if (search(index + 1, { ...assignment, [candidate]: value })) return true;
+    }
+    return false;
+  };
+
+  return search(0, partial);
 }

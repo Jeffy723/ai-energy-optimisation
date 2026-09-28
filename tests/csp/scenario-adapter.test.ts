@@ -192,6 +192,118 @@ describe("scenario constraint adapter", () => {
     expect(result.result.solution).toBeUndefined();
   });
 
+  it("combines temperature, light, time-of-day, and occupancy rules in one CSP", () => {
+    const scenario: Scenario = {
+      ...scenarioWith({
+        id: "hot-rule",
+        description: "Forbid active state above the temperature threshold",
+        semantics: {
+          kind: "forbid-states-when-condition",
+          deviceIds: ["device"],
+          condition: {
+            type: "scenario-number",
+            property: "temperature",
+            operator: "greater-than-or-equal",
+            value: 25,
+          },
+          stateIds: ["active"],
+        },
+      }, 3),
+      context: { temperature: 28, lightIntensity: 100, timeOfDay: "evening" },
+      constraints: [
+        {
+          id: "hot-rule",
+          description: "Temperature rule",
+          semantics: {
+            kind: "forbid-states-when-condition",
+            deviceIds: ["device"],
+            condition: {
+              type: "scenario-number",
+              property: "temperature",
+              operator: "greater-than-or-equal",
+              value: 25,
+            },
+            stateIds: ["active"],
+          },
+        },
+        {
+          id: "light-rule",
+          description: "Light intensity rule",
+          semantics: {
+            kind: "forbid-states-when-condition",
+            deviceIds: ["device"],
+            condition: {
+              type: "scenario-number",
+              property: "lightIntensity",
+              operator: "less-than-or-equal",
+              value: 100,
+            },
+            stateIds: ["active"],
+          },
+        },
+        {
+          id: "time-rule",
+          description: "Time of day rule",
+          semantics: {
+            kind: "forbid-states-when-condition",
+            deviceIds: ["device"],
+            condition: {
+              type: "scenario-text",
+              property: "timeOfDay",
+              operator: "equals",
+              value: "evening",
+            },
+            stateIds: ["active"],
+          },
+        },
+        {
+          id: "occupancy-rule",
+          description: "Occupancy rule",
+          semantics: {
+            kind: "require-state-when-condition",
+            deviceIds: ["device"],
+            condition: {
+              type: "room-occupancy",
+              operator: "greater-than-or-equal",
+              value: 3,
+            },
+            stateId: "off",
+          },
+        },
+      ],
+    };
+    const result = solve(createSolvableCspProblem(scenario));
+
+    expect(result.result.solution?.configuration).toEqual({ device: "off" });
+  });
+
+  it("uses updated environmental input when a scenario is adapted again", () => {
+    const rule: ScenarioConstraint = {
+      id: "temperature-rule",
+      description: "Forbid active state when temperature is high",
+      semantics: {
+        kind: "forbid-states-when-condition",
+        deviceIds: ["device"],
+        condition: {
+          type: "scenario-number",
+          property: "temperature",
+          operator: "greater-than-or-equal",
+          value: 25,
+        },
+        stateIds: ["active"],
+      },
+    };
+    const cool = { ...scenarioWith(rule), context: { temperature: 20 } };
+    const hot = { ...scenarioWith(rule), context: { temperature: 30 } };
+    const onlyActive = (scenario: Scenario) => solve({
+      ...createSolvableCspProblem(scenario),
+      domains: new Map([["device", ["active"]]]),
+    }).result.feasible;
+
+    expect(onlyActive(cool)).toBe(true);
+    expect(onlyActive(hot)).toBe(false);
+  });
+
   it("rejects missing and invalid environmental context instead of silently satisfying a rule", () => {
     const rule: ScenarioConstraint = {
       id: "missing-temperature",
